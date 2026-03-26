@@ -26,32 +26,52 @@ struct SettingsView: View {
             }
 
             Section("Monatliches Token-Budget") {
-                TextField("Token-Budget", value: Binding(
-                    get: { settings.monthlyBudget },
-                    set: { settings.monthlyBudget = $0; try? modelContext.save() }
-                ), format: .number)
-                .textFieldStyle(.roundedBorder)
-
                 HStack {
-                    Text("Warnung 1")
+                    Text("Budget")
+                    Spacer()
+                    TextField("Tokens", value: Binding(
+                        get: { settings.monthlyBudget },
+                        set: { settings.monthlyBudget = $0; try? modelContext.save() }
+                    ), format: .number)
+                    .textFieldStyle(.roundedBorder)
+                    .frame(width: 140)
+                    .multilineTextAlignment(.trailing)
+                }
+
+                VStack(alignment: .leading, spacing: 8) {
+                    HStack {
+                        Image(systemName: "exclamationmark.triangle")
+                            .foregroundStyle(.yellow)
+                        Text("Warnung 1")
+                        Spacer()
+                        Text("\(Int(settings.warningThreshold1 * 100))%")
+                            .monospacedDigit()
+                            .foregroundStyle(.secondary)
+                            .frame(width: 40)
+                    }
                     Slider(value: Binding(
                         get: { settings.warningThreshold1 },
                         set: { settings.warningThreshold1 = $0; try? modelContext.save() }
                     ), in: 0.1...0.9, step: 0.05)
-                    Text("\(Int(settings.warningThreshold1 * 100))%")
-                        .monospacedDigit()
-                        .frame(width: 40)
+                    .tint(.yellow)
                 }
 
-                HStack {
-                    Text("Warnung 2")
+                VStack(alignment: .leading, spacing: 8) {
+                    HStack {
+                        Image(systemName: "exclamationmark.triangle.fill")
+                            .foregroundStyle(.orange)
+                        Text("Warnung 2")
+                        Spacer()
+                        Text("\(Int(settings.warningThreshold2 * 100))%")
+                            .monospacedDigit()
+                            .foregroundStyle(.secondary)
+                            .frame(width: 40)
+                    }
                     Slider(value: Binding(
                         get: { settings.warningThreshold2 },
                         set: { settings.warningThreshold2 = $0; try? modelContext.save() }
                     ), in: 0.1...0.99, step: 0.05)
-                    Text("\(Int(settings.warningThreshold2 * 100))%")
-                        .monospacedDigit()
-                        .frame(width: 40)
+                    .tint(.orange)
                 }
 
                 Toggle("Benachrichtigungen", isOn: Binding(
@@ -62,6 +82,6 @@ struct SettingsView: View {
         }
         .formStyle(.grouped)
         .padding()
-        .frame(width: 420, height: 300)
+        .frame(width: 440, height: 360)
     }
 }

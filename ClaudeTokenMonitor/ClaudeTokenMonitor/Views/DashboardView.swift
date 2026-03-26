@@ -141,12 +141,12 @@ struct DashboardView: View {
 
             Divider()
 
-            // Total tokens
-            HStack(spacing: 16) {
-                StatCard(title: "Gesamt", value: TokenFormatter.format(totalAll), color: .primary)
-                StatCard(title: "Input", value: TokenFormatter.format(totalInput), color: .blue)
-                StatCard(title: "Output", value: TokenFormatter.format(totalOutput), color: .green)
-                StatCard(title: "Cache", value: TokenFormatter.format(totalCache), color: .orange)
+            // Total tokens — glass cards
+            HStack(spacing: 10) {
+                GlassStatCard(title: "Gesamt", value: TokenFormatter.format(totalAll), color: .primary)
+                GlassStatCard(title: "Input", value: TokenFormatter.format(totalInput), color: .blue)
+                GlassStatCard(title: "Output", value: TokenFormatter.format(totalOutput), color: .green)
+                GlassStatCard(title: "Cache", value: TokenFormatter.format(totalCache), color: .orange)
             }
 
             // Budget banner
@@ -166,6 +166,9 @@ struct DashboardView: View {
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
+                .padding(.horizontal, 8)
+                .padding(.vertical, 4)
+                .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 6))
             }
 
             Divider()
@@ -212,11 +215,11 @@ struct DashboardView: View {
             }
         }
         .padding(16)
-        .frame(width: 360, height: 340)
+        .frame(width: 380, height: 380)
     }
 }
 
-struct StatCard: View {
+struct GlassStatCard: View {
     let title: String
     let value: String
     let color: Color
@@ -231,6 +234,8 @@ struct StatCard: View {
                 .foregroundStyle(.secondary)
         }
         .frame(maxWidth: .infinity)
+        .padding(.vertical, 8)
+        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 8))
     }
 }
 
@@ -251,9 +256,13 @@ struct ProjectRow: View {
                     .foregroundStyle(.secondary)
             }
             GeometryReader { geo in
-                RoundedRectangle(cornerRadius: 2)
-                    .fill(.tint)
-                    .frame(width: geo.size.width * fraction)
+                ZStack(alignment: .leading) {
+                    RoundedRectangle(cornerRadius: 2)
+                        .fill(.quaternary)
+                    RoundedRectangle(cornerRadius: 2)
+                        .fill(.tint)
+                        .frame(width: geo.size.width * fraction)
+                }
             }
             .frame(height: 4)
         }
