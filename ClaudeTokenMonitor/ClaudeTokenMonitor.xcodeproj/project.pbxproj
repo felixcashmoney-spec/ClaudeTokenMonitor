@@ -21,6 +21,8 @@
 		AA00000100000000000000CA /* SessionWatcher.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00000100000000000000CC /* SessionWatcher.swift */; };
 		AA00000100000000000000DA /* DashboardView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00000100000000000000DD /* DashboardView.swift */; };
 		AA00000100000000000000EA /* TokenFormatter.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00000100000000000000ED /* TokenFormatter.swift */; };
+		AA0000010000000000000F0A /* BudgetSettings.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000010000000000000F0B /* BudgetSettings.swift */; };
+		AA0000010000000000000F1A /* BudgetMonitor.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000010000000000000F1B /* BudgetMonitor.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -39,6 +41,8 @@
 		AA00000100000000000000CC /* SessionWatcher.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionWatcher.swift; sourceTree = "<group>"; };
 		AA00000100000000000000DD /* DashboardView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DashboardView.swift; sourceTree = "<group>"; };
 		AA00000100000000000000ED /* TokenFormatter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TokenFormatter.swift; sourceTree = "<group>"; };
+		AA0000010000000000000F0B /* BudgetSettings.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BudgetSettings.swift; sourceTree = "<group>"; };
+		AA0000010000000000000F1B /* BudgetMonitor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BudgetMonitor.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -75,6 +79,7 @@
 			children = (
 				AA000001000000000000009B /* Session.swift */,
 				AA00000100000000000000AC /* TokenRecord.swift */,
+				AA0000010000000000000F0B /* BudgetSettings.swift */,
 			);
 			path = Models;
 			sourceTree = "<group>";
@@ -84,6 +89,7 @@
 			children = (
 				AA00000100000000000000BC /* JSONLParser.swift */,
 				AA00000100000000000000CC /* SessionWatcher.swift */,
+				AA0000010000000000000F1B /* BudgetMonitor.swift */,
 			);
 			path = Services;
 			sourceTree = "<group>";
@@ -194,6 +200,8 @@
 				AA00000100000000000000CA /* SessionWatcher.swift in Sources */,
 				AA00000100000000000000DA /* DashboardView.swift in Sources */,
 				AA00000100000000000000EA /* TokenFormatter.swift in Sources */,
+				AA0000010000000000000F0A /* BudgetSettings.swift in Sources */,
+				AA0000010000000000000F1A /* BudgetMonitor.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

@@ -1,16 +1,29 @@
 import AppKit
 import SwiftUI
+import SwiftData
+import Combine
 
 @MainActor
 final class MenubarManager: NSObject, ObservableObject {
 
     private var statusItem: NSStatusItem!
     private var popover: NSPopover!
+    private var budgetMonitor: BudgetMonitor?
+    private var cancellable: AnyCancellable?
 
     override init() {
         super.init()
         setupStatusItem()
         setupPopover()
+    }
+
+    func observeBudget(_ monitor: BudgetMonitor) {
+        budgetMonitor = monitor
+        cancellable = monitor.$state
+            .receive(on: RunLoop.main)
+            .sink { [weak self] state in
+                self?.updateIcon(for: state)
+            }
     }
 
     private func setupStatusItem() {
@@ -24,12 +37,29 @@ final class MenubarManager: NSObject, ObservableObject {
 
     private func setupPopover() {
         popover = NSPopover()
-        popover.contentSize = NSSize(width: 360, height: 340)
+        popover.contentSize = NSSize(width: 360, height: 380)
         popover.behavior = .transient
         popover.contentViewController = NSHostingController(
             rootView: MenubarView()
                 .modelContainer(sharedModelContainer)
         )
+    }
+
+    private func updateIcon(for state: BudgetState) {
+        guard let button = statusItem.button else { return }
+        switch state {
+        case .noBudget, .ok:
+            button.image = NSImage(systemSymbolName: "chart.bar.fill", accessibilityDescription: "Claude Token Monitor")
+        case .warning:
+            button.image = NSImage(systemSymbolName: "chart.bar.fill", accessibilityDescription: "Claude Token Monitor - Warnung")
+            button.contentTintColor = .systemYellow
+        case .critical:
+            button.image = NSImage(systemSymbolName: "exclamationmark.triangle.fill", accessibilityDescription: "Claude Token Monitor - Kritisch")
+            button.contentTintColor = .systemOrange
+        case .exceeded:
+            button.image = NSImage(systemSymbolName: "exclamationmark.triangle.fill", accessibilityDescription: "Claude Token Monitor - Budget überschritten")
+            button.contentTintColor = .systemRed
+        }
     }
 
     @objc private func togglePopover(_ sender: AnyObject?) {

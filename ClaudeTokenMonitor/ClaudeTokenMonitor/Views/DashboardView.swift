@@ -16,8 +16,58 @@ enum TimeFilter: String, CaseIterable {
     }
 }
 
+struct BudgetBanner: View {
+    let state: BudgetState
+    let currentTokens: Int
+    let budget: Int
+
+    var body: some View {
+        switch state {
+        case .noBudget:
+            EmptyView()
+        case .ok(let pct):
+            budgetBar(percent: pct, color: .green)
+        case .warning(let pct, _):
+            budgetBar(percent: pct, color: .yellow)
+        case .critical(let pct, _):
+            budgetBar(percent: pct, color: .orange)
+        case .exceeded(let pct):
+            budgetBar(percent: min(pct, 1.0), color: .red)
+        }
+    }
+
+    @ViewBuilder
+    private func budgetBar(percent: Double, color: Color) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            HStack {
+                Text("Budget")
+                    .font(.caption.weight(.medium))
+                Spacer()
+                Text("\(TokenFormatter.format(currentTokens)) / \(TokenFormatter.format(budget))")
+                    .font(.caption.monospacedDigit())
+                    .foregroundStyle(.secondary)
+                Text("(\(Int(percent * 100))%)")
+                    .font(.caption.monospacedDigit())
+                    .foregroundStyle(color)
+            }
+            GeometryReader { geo in
+                ZStack(alignment: .leading) {
+                    RoundedRectangle(cornerRadius: 3)
+                        .fill(color.opacity(0.2))
+                    RoundedRectangle(cornerRadius: 3)
+                        .fill(color)
+                        .frame(width: geo.size.width * min(percent, 1.0))
+                }
+            }
+            .frame(height: 6)
+        }
+    }
+}
+
 struct DashboardView: View {
     @Query private var sessions: [Session]
+    @Query private var budgetSettings: [BudgetSettings]
+    @Environment(\.modelContext) private var modelContext
     @State private var timeFilter: TimeFilter = .today
 
     private var filteredSessions: [Session] {
@@ -55,6 +105,24 @@ struct DashboardView: View {
         }
     }
 
+    private var monthlyTokens: Int {
+        let cal = Calendar.current
+        let startOfMonth = cal.date(from: cal.dateComponents([.year, .month], from: Date())) ?? Date()
+        return sessions.filter { $0.lastActivityAt >= startOfMonth }
+            .reduce(0) { $0 + $1.totalTokens }
+    }
+
+    private var budgetState: BudgetState {
+        guard let settings = budgetSettings.first, settings.monthlyBudget > 0 else {
+            return .noBudget
+        }
+        let usage = Double(monthlyTokens) / Double(settings.monthlyBudget)
+        if usage >= 1.0 { return .exceeded(usagePercent: usage) }
+        if usage >= settings.warningThreshold2 { return .critical(usagePercent: usage, threshold: settings.warningThreshold2) }
+        if usage >= settings.warningThreshold1 { return .warning(usagePercent: usage, threshold: settings.warningThreshold1) }
+        return .ok(usagePercent: usage)
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             // Header
@@ -79,6 +147,15 @@ struct DashboardView: View {
                 StatCard(title: "Input", value: TokenFormatter.format(totalInput), color: .blue)
                 StatCard(title: "Output", value: TokenFormatter.format(totalOutput), color: .green)
                 StatCard(title: "Cache", value: TokenFormatter.format(totalCache), color: .orange)
+            }
+
+            // Budget banner
+            if case .noBudget = budgetState {} else {
+                BudgetBanner(
+                    state: budgetState,
+                    currentTokens: monthlyTokens,
+                    budget: budgetSettings.first?.monthlyBudget ?? 0
+                )
             }
 
             if rateLimitEvents > 0 {
