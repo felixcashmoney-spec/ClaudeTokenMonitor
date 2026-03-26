@@ -23,11 +23,11 @@
 - [ ] **CONF-01**: Nutzer kann eigenes monatliches Token-Budget setzen
 - [ ] **CONF-02**: Konfigurierbare Warnschwellen (z.B. 50%, 80%)
 - [ ] **CONF-03**: App startet automatisch mit macOS (Login Item)
-- [ ] **CONF-04**: Menubar-Icon mit Schnellzugriff auf Dashboard
+- [x] **CONF-04**: Menubar-Icon mit Schnellzugriff auf Dashboard
 
 ### UI/Design
 
-- [ ] **UI-01**: Native macOS App mit SwiftUI
+- [x] **UI-01**: Native macOS App mit SwiftUI
 - [ ] **UI-02**: Apple Liquid Glass Design (macOS 26+)
 
 ## v2 Requirements
@@ -52,9 +52,9 @@
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| UI-01 | Phase 1 | Pending |
+| UI-01 | Phase 1 | Complete |
 | CONF-03 | Phase 1 | Pending |
-| CONF-04 | Phase 1 | Pending |
+| CONF-04 | Phase 1 | Complete |
 | TRACK-01 | Phase 2 | Pending |
 | TRACK-02 | Phase 2 | Pending |
 | TRACK-03 | Phase 2 | Pending |

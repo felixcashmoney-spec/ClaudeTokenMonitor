@@ -32,7 +32,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 **Plans**: 3 plans
 
 Plans:
-- [ ] 01-01-PLAN.md — Xcode project scaffold, LSUIElement, NSStatusItem + NSPopover
+- [x] 01-01-PLAN.md — Xcode project scaffold, LSUIElement, NSStatusItem + NSPopover
 - [ ] 01-02-PLAN.md — SwiftData ModelContainer, SMAppService Login Item, SettingsView
 - [ ] 01-03-PLAN.md — Human verification of all Phase 1 success criteria
 
