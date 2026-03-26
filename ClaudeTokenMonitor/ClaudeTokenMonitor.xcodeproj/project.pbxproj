@@ -19,6 +19,8 @@
 		AA00000100000000000000AA /* TokenRecord.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00000100000000000000AC /* TokenRecord.swift */; };
 		AA00000100000000000000BA /* JSONLParser.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00000100000000000000BC /* JSONLParser.swift */; };
 		AA00000100000000000000CA /* SessionWatcher.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00000100000000000000CC /* SessionWatcher.swift */; };
+		AA00000100000000000000DA /* DashboardView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00000100000000000000DD /* DashboardView.swift */; };
+		AA00000100000000000000EA /* TokenFormatter.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00000100000000000000ED /* TokenFormatter.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -35,6 +37,8 @@
 		AA00000100000000000000AC /* TokenRecord.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TokenRecord.swift; sourceTree = "<group>"; };
 		AA00000100000000000000BC /* JSONLParser.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = JSONLParser.swift; sourceTree = "<group>"; };
 		AA00000100000000000000CC /* SessionWatcher.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionWatcher.swift; sourceTree = "<group>"; };
+		AA00000100000000000000DD /* DashboardView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DashboardView.swift; sourceTree = "<group>"; };
+		AA00000100000000000000ED /* TokenFormatter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TokenFormatter.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -59,6 +63,7 @@
 				AA000001000000000000008B /* SettingsView.swift */,
 				AA00000100000000000000DC /* Models */,
 				AA00000100000000000000EC /* Services */,
+				AA00000100000000000000FC /* Views */,
 				AA000001000000000000004B /* Assets.xcassets */,
 				AA000001000000000000005B /* Info.plist */,
 			);
@@ -81,6 +86,15 @@
 				AA00000100000000000000CC /* SessionWatcher.swift */,
 			);
 			path = Services;
+			sourceTree = "<group>";
+		};
+		AA00000100000000000000FC /* Views */ = {
+			isa = PBXGroup;
+			children = (
+				AA00000100000000000000DD /* DashboardView.swift */,
+				AA00000100000000000000ED /* TokenFormatter.swift */,
+			);
+			path = Views;
 			sourceTree = "<group>";
 		};
 		AA00000100000000000000DB /* Products */ = {
@@ -178,6 +192,8 @@
 				AA00000100000000000000AA /* TokenRecord.swift in Sources */,
 				AA00000100000000000000BA /* JSONLParser.swift in Sources */,
 				AA00000100000000000000CA /* SessionWatcher.swift in Sources */,
+				AA00000100000000000000DA /* DashboardView.swift in Sources */,
+				AA00000100000000000000EA /* TokenFormatter.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

@@ -24,9 +24,12 @@ final class MenubarManager: NSObject, ObservableObject {
 
     private func setupPopover() {
         popover = NSPopover()
-        popover.contentSize = NSSize(width: 320, height: 240)
+        popover.contentSize = NSSize(width: 360, height: 340)
         popover.behavior = .transient
-        popover.contentViewController = NSHostingController(rootView: MenubarView())
+        popover.contentViewController = NSHostingController(
+            rootView: MenubarView()
+                .modelContainer(sharedModelContainer)
+        )
     }
 
     @objc private func togglePopover(_ sender: AnyObject?) {
