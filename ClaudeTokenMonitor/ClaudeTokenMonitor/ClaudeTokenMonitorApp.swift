@@ -1,4 +1,5 @@
 import SwiftUI
+import SwiftData
 
 @main
 struct ClaudeTokenMonitorApp: App {
@@ -6,8 +7,9 @@ struct ClaudeTokenMonitorApp: App {
 
     var body: some Scene {
         Settings {
-            EmptyView()
+            SettingsView()
         }
+        .modelContainer(sharedModelContainer)
     }
 }
 
