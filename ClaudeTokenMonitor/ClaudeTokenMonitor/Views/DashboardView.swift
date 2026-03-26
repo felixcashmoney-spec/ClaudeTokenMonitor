@@ -105,6 +105,10 @@ struct DashboardView: View {
         }
     }
 
+    private var latestRateLimitMessage: String? {
+        sessions.compactMap { $0.lastRateLimitMessage }.last
+    }
+
     private var monthlyTokens: Int {
         let cal = Calendar.current
         let startOfMonth = cal.date(from: cal.dateComponents([.year, .month], from: Date())) ?? Date()
@@ -158,17 +162,30 @@ struct DashboardView: View {
                 )
             }
 
-            if rateLimitEvents > 0 {
-                HStack {
-                    Image(systemName: "exclamationmark.triangle.fill")
-                        .foregroundStyle(.yellow)
-                    Text("\(rateLimitEvents) Rate-Limit Events")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
+            // Rate limit / plan status
+            if rateLimitEvents > 0 || latestRateLimitMessage != nil {
+                VStack(alignment: .leading, spacing: 4) {
+                    HStack {
+                        Image(systemName: "exclamationmark.octagon.fill")
+                            .foregroundStyle(.red)
+                        Text("Plan-Limit erreicht")
+                            .font(.caption.weight(.medium))
+                        if rateLimitEvents > 0 {
+                            Text("(\(rateLimitEvents)x)")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                    if let msg = latestRateLimitMessage {
+                        Text(msg)
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                    }
                 }
-                .padding(.horizontal, 8)
-                .padding(.vertical, 4)
-                .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 6))
+                .padding(.horizontal, 10)
+                .padding(.vertical, 6)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(.red.opacity(0.1), in: RoundedRectangle(cornerRadius: 8))
             }
 
             Divider()
@@ -215,7 +232,7 @@ struct DashboardView: View {
             }
         }
         .padding(16)
-        .frame(width: 380, height: 380)
+        .frame(width: 380, height: 420)
     }
 }
 

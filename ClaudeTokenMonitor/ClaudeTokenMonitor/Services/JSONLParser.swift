@@ -8,6 +8,8 @@ struct ParsedTokenUsage {
     let cacheReadInputTokens: Int
     let model: String
     let isRateLimited: Bool
+    let rateLimitResetMessage: String?
+    let cwd: String?
 }
 
 struct JSONLParser {
@@ -78,15 +80,27 @@ struct JSONLParser {
         let timestampStr = json["timestamp"] as? String ?? ""
         let timestamp = iso8601.date(from: timestampStr) ?? Date()
         let model = message["model"] as? String ?? "unknown"
+        let cwd = json["cwd"] as? String
 
         let inputTokens = usage["input_tokens"] as? Int ?? 0
         let outputTokens = usage["output_tokens"] as? Int ?? 0
         let cacheCreation = usage["cache_creation_input_tokens"] as? Int ?? 0
         let cacheRead = usage["cache_read_input_tokens"] as? Int ?? 0
 
-        // Detect rate limiting: check for stop_reason or error indicators
-        let stopReason = message["stop_reason"] as? String
-        let isRateLimited = stopReason == "rate_limit"
+        // Detect rate limiting via error field or content text
+        let errorField = json["error"] as? String
+        let isRateLimited = errorField == "rate_limit"
+
+        // Extract rate limit reset message from content
+        var rateLimitResetMessage: String?
+        if isRateLimited, let content = message["content"] as? [[String: Any]] {
+            for block in content {
+                if let text = block["text"] as? String, text.contains("resets") {
+                    rateLimitResetMessage = text
+                    break
+                }
+            }
+        }
 
         return ParsedTokenUsage(
             timestamp: timestamp,
@@ -95,7 +109,9 @@ struct JSONLParser {
             cacheCreationInputTokens: cacheCreation,
             cacheReadInputTokens: cacheRead,
             model: model,
-            isRateLimited: isRateLimited
+            isRateLimited: isRateLimited,
+            rateLimitResetMessage: rateLimitResetMessage,
+            cwd: cwd
         )
     }
 }
