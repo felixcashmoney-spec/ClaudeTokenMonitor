@@ -40,13 +40,13 @@ struct BudgetBanner: View {
     private func budgetBar(percent: Double, color: Color) -> some View {
         VStack(alignment: .leading, spacing: 4) {
             HStack {
-                Text("Budget")
+                Image(systemName: "creditcard")
+                    .font(.caption2)
+                    .foregroundStyle(color)
+                Text("Dein monatliches Budget")
                     .font(.caption.weight(.medium))
                 Spacer()
-                Text("\(TokenFormatter.format(currentTokens)) / \(TokenFormatter.format(budget))")
-                    .font(.caption.monospacedDigit())
-                    .foregroundStyle(.secondary)
-                Text("(\(Int(percent * 100))%)")
+                Text("\(Int(percent * 100))% verbraucht")
                     .font(.caption.monospacedDigit())
                     .foregroundStyle(color)
             }
@@ -60,6 +60,9 @@ struct BudgetBanner: View {
                 }
             }
             .frame(height: 6)
+            Text("\(TokenFormatter.format(currentTokens)) von \(TokenFormatter.format(budget)) Tokens verwendet")
+                .font(.caption2)
+                .foregroundStyle(.secondary)
         }
     }
 }
@@ -128,127 +131,167 @@ struct DashboardView: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            // Header
-            HStack {
-                Text("Claude Token Monitor")
-                    .font(.headline)
-                Spacer()
-                Picker("", selection: $timeFilter) {
-                    ForEach(TimeFilter.allCases, id: \.self) { filter in
-                        Text(filter.rawValue).tag(filter)
-                    }
-                }
-                .pickerStyle(.segmented)
-                .frame(width: 200)
-            }
-
-            Divider()
-
-            // Total tokens — glass cards
-            HStack(spacing: 10) {
-                GlassStatCard(title: "Gesamt", value: TokenFormatter.format(totalAll), color: .primary)
-                GlassStatCard(title: "Input", value: TokenFormatter.format(totalInput), color: .blue)
-                GlassStatCard(title: "Output", value: TokenFormatter.format(totalOutput), color: .green)
-                GlassStatCard(title: "Cache", value: TokenFormatter.format(totalCache), color: .orange)
-            }
-
-            // Budget banner
-            if case .noBudget = budgetState {} else {
-                BudgetBanner(
-                    state: budgetState,
-                    currentTokens: monthlyTokens,
-                    budget: budgetSettings.first?.monthlyBudget ?? 0
-                )
-            }
-
-            // Rate limit / plan status
-            if rateLimitEvents > 0 || latestRateLimitMessage != nil {
-                VStack(alignment: .leading, spacing: 4) {
-                    HStack {
-                        Image(systemName: "exclamationmark.octagon.fill")
-                            .foregroundStyle(.red)
-                        Text("Plan-Limit erreicht")
-                            .font(.caption.weight(.medium))
-                        if rateLimitEvents > 0 {
-                            Text("(\(rateLimitEvents)x)")
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                        }
-                    }
-                    if let msg = latestRateLimitMessage {
-                        Text(msg)
+        ScrollView {
+            VStack(alignment: .leading, spacing: 14) {
+                // Header
+                HStack {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Claude Token Monitor")
+                            .font(.headline)
+                        Text("Dein Claude Code Verbrauch auf einen Blick")
                             .font(.caption2)
                             .foregroundStyle(.secondary)
                     }
+                    Spacer()
+                    Picker("", selection: $timeFilter) {
+                        ForEach(TimeFilter.allCases, id: \.self) { filter in
+                            Text(filter.rawValue).tag(filter)
+                        }
+                    }
+                    .pickerStyle(.segmented)
+                    .frame(width: 180)
                 }
-                .padding(.horizontal, 10)
-                .padding(.vertical, 6)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .background(.red.opacity(0.1), in: RoundedRectangle(cornerRadius: 8))
-            }
 
-            Divider()
+                Divider()
 
-            // Project breakdown
-            Text("Projekte")
-                .font(.subheadline.weight(.medium))
+                // Section: Token-Verbrauch
+                Text("Token-Verbrauch")
+                    .font(.subheadline.weight(.medium))
 
-            if projectBreakdown.isEmpty {
-                Text("Keine Daten für diesen Zeitraum")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .frame(maxWidth: .infinity, alignment: .center)
+                HStack(spacing: 10) {
+                    GlassStatCard(
+                        title: "Gesamt",
+                        subtitle: "Alle Tokens",
+                        value: TokenFormatter.format(totalAll),
+                        color: .primary
+                    )
+                    GlassStatCard(
+                        title: "Input",
+                        subtitle: "Deine Prompts",
+                        value: TokenFormatter.format(totalInput),
+                        color: .blue
+                    )
+                    GlassStatCard(
+                        title: "Output",
+                        subtitle: "Claudes Antworten",
+                        value: TokenFormatter.format(totalOutput),
+                        color: .green
+                    )
+                    GlassStatCard(
+                        title: "Cache",
+                        subtitle: "Zwischengespeichert",
+                        value: TokenFormatter.format(totalCache),
+                        color: .orange
+                    )
+                }
+
+                // Budget banner
+                if case .noBudget = budgetState {} else {
+                    BudgetBanner(
+                        state: budgetState,
+                        currentTokens: monthlyTokens,
+                        budget: budgetSettings.first?.monthlyBudget ?? 0
+                    )
+                }
+
+                // Rate limit / plan status
+                if rateLimitEvents > 0 || latestRateLimitMessage != nil {
+                    VStack(alignment: .leading, spacing: 4) {
+                        HStack {
+                            Image(systemName: "exclamationmark.octagon.fill")
+                                .foregroundStyle(.red)
+                            Text("Plan-Limit erreicht")
+                                .font(.caption.weight(.medium))
+                            if rateLimitEvents > 0 {
+                                Text("(\(rateLimitEvents)x im Zeitraum)")
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                            }
+                        }
+                        if let msg = latestRateLimitMessage {
+                            Text(msg)
+                                .font(.caption2)
+                                .foregroundStyle(.secondary)
+                        }
+                        Text("Claude hat dein Nutzungslimit erreicht. Warte auf den Reset oder upgrade deinen Plan.")
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                    }
+                    .padding(.horizontal, 10)
                     .padding(.vertical, 8)
-            } else {
-                ScrollView {
-                    VStack(spacing: 6) {
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(.red.opacity(0.1), in: RoundedRectangle(cornerRadius: 8))
+                }
+
+                Divider()
+
+                // Section: Projekte
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Verbrauch pro Projekt")
+                        .font(.subheadline.weight(.medium))
+                    Text("Welches Projekt verbraucht wie viele Tokens")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                }
+
+                if projectBreakdown.isEmpty {
+                    Text("Keine Daten für diesen Zeitraum")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .frame(maxWidth: .infinity, alignment: .center)
+                        .padding(.vertical, 8)
+                } else {
+                    VStack(spacing: 8) {
                         ForEach(projectBreakdown, id: \.name) { project in
                             ProjectRow(
                                 name: project.name,
                                 tokens: project.tokens,
-                                fraction: totalAll > 0 ? Double(project.tokens) / Double(totalAll) : 0
+                                fraction: totalAll > 0 ? Double(project.tokens) / Double(totalAll) : 0,
+                                percent: totalAll > 0 ? Int(Double(project.tokens) / Double(totalAll) * 100) : 0
                             )
                         }
                     }
                 }
-                .frame(maxHeight: 120)
-            }
 
-            Divider()
+                Divider()
 
-            // Footer
-            HStack {
-                Text("\(filteredSessions.count) Sessions")
+                // Footer
+                HStack {
+                    Text("\(filteredSessions.count) Sessions im Zeitraum")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    Spacer()
+                    Button("Einstellungen...") {
+                        NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil)
+                        NSApp.keyWindow?.close()
+                    }
+                    .buttonStyle(.link)
                     .font(.caption)
-                    .foregroundStyle(.secondary)
-                Spacer()
-                Button("Settings...") {
-                    NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil)
-                    NSApp.keyWindow?.close()
                 }
-                .buttonStyle(.link)
-                .font(.caption)
             }
+            .padding(16)
         }
-        .padding(16)
-        .frame(width: 380, height: 420)
+        .frame(width: 400, height: 460)
     }
 }
 
 struct GlassStatCard: View {
     let title: String
+    let subtitle: String
     let value: String
     let color: Color
 
     var body: some View {
-        VStack(spacing: 2) {
+        VStack(spacing: 3) {
             Text(value)
                 .font(.title3.weight(.semibold).monospacedDigit())
                 .foregroundStyle(color)
             Text(title)
-                .font(.caption2)
+                .font(.caption2.weight(.medium))
+            Text(subtitle)
+                .font(.system(size: 9))
                 .foregroundStyle(.secondary)
+                .lineLimit(1)
         }
         .frame(maxWidth: .infinity)
         .padding(.vertical, 8)
@@ -260,28 +303,36 @@ struct ProjectRow: View {
     let name: String
     let tokens: Int
     let fraction: Double
+    let percent: Int
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 3) {
+        VStack(alignment: .leading, spacing: 4) {
             HStack {
+                Image(systemName: "folder.fill")
+                    .font(.caption2)
+                    .foregroundStyle(.tint)
                 Text(name)
-                    .font(.caption)
+                    .font(.caption.weight(.medium))
                     .lineLimit(1)
                 Spacer()
                 Text(TokenFormatter.format(tokens))
                     .font(.caption.monospacedDigit())
                     .foregroundStyle(.secondary)
+                Text("(\(percent)%)")
+                    .font(.caption2.monospacedDigit())
+                    .foregroundStyle(.tertiary)
             }
             GeometryReader { geo in
                 ZStack(alignment: .leading) {
-                    RoundedRectangle(cornerRadius: 2)
+                    RoundedRectangle(cornerRadius: 3)
                         .fill(.quaternary)
-                    RoundedRectangle(cornerRadius: 2)
+                    RoundedRectangle(cornerRadius: 3)
                         .fill(.tint)
                         .frame(width: geo.size.width * fraction)
                 }
             }
-            .frame(height: 4)
+            .frame(height: 5)
         }
+        .padding(.vertical, 2)
     }
 }
