@@ -5,7 +5,7 @@ milestone_name: milestone
 status: executing
 stopped_at: Completed 01-app-foundation-01-01-PLAN.md
 last_updated: "2026-03-26T15:13:51.031Z"
-last_activity: 2026-03-26
+last_activity: 2026-03-27
 progress:
   total_phases: 5
   completed_phases: 0
@@ -28,7 +28,7 @@ See: .planning/PROJECT.md (updated 2026-03-26)
 Phase: 01 (app-foundation) — EXECUTING
 Plan: 2 of 3
 Status: Ready to execute
-Last activity: 2026-03-26
+Last activity: 2026-03-27
 
 Progress: [░░░░░░░░░░] 0%
 
@@ -75,6 +75,12 @@ None yet.
 ### Blockers/Concerns
 
 - The mechanism for reading Claude Code session data (log files, IPC, file system watching) is not yet determined. This is the key technical risk for Phase 2 and should be researched first.
+
+### Quick Tasks Completed
+
+| # | Description | Date | Commit | Directory |
+|---|-------------|------|--------|-----------|
+| 260327-14j | Add remaining session usage display | 2026-03-27 | edcb2f1 | [260327-14j-add-remaining-session-usage-display](./quick/260327-14j-add-remaining-session-usage-display/) |
 
 ## Session Continuity
 
