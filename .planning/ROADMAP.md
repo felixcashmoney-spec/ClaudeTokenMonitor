@@ -29,7 +29,13 @@ Decimal phases appear between their surrounding integers in numeric order.
   2. A menubar icon is visible and clicking it opens a popover or window
   3. App is registered as a Login Item and relaunches automatically after reboot
   4. No Dock icon appears — app is menubar-only
-**Plans**: TBD
+**Plans**: 3 plans
+
+Plans:
+- [ ] 01-01-PLAN.md — Xcode project scaffold, LSUIElement, NSStatusItem + NSPopover
+- [ ] 01-02-PLAN.md — SwiftData ModelContainer, SMAppService Login Item, SettingsView
+- [ ] 01-03-PLAN.md — Human verification of all Phase 1 success criteria
+
 **UI hint**: yes
 
 ### Phase 2: Session Tracking Engine
@@ -84,7 +90,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. App Foundation | 0/TBD | Not started | - |
+| 1. App Foundation | 0/3 | Not started | - |
 | 2. Session Tracking Engine | 0/TBD | Not started | - |
 | 3. Dashboard | 0/TBD | Not started | - |
 | 4. Budget & Alerts | 0/TBD | Not started | - |
