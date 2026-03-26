@@ -96,7 +96,7 @@ struct DashboardView: View {
         for session in filteredSessions {
             byProject[session.projectName, default: 0] += session.totalTokens
         }
-        return byProject.sorted { $0.value > $1.value }
+        return byProject.sorted { $0.value > $1.value }.map { (name: $0.key, tokens: $0.value) }
     }
 
     private var rateLimitEvents: Int {

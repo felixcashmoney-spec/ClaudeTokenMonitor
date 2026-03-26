@@ -13,18 +13,24 @@ struct ClaudeTokenMonitorApp: App {
     }
 }
 
+@MainActor
 class AppDelegate: NSObject, NSApplicationDelegate {
     private var menubarManager: MenubarManager?
-    let sessionWatcher = SessionWatcher()
-    let budgetMonitor = BudgetMonitor()
+    private var sessionWatcher: SessionWatcher?
+    private var budgetMonitor: BudgetMonitor?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         let manager = MenubarManager()
         menubarManager = manager
 
+        let watcher = SessionWatcher()
+        let monitor = BudgetMonitor()
+        sessionWatcher = watcher
+        budgetMonitor = monitor
+
         let context = sharedModelContainer.mainContext
-        sessionWatcher.start(modelContext: context)
-        budgetMonitor.start(modelContext: context)
-        manager.observeBudget(budgetMonitor)
+        watcher.start(modelContext: context)
+        monitor.start(modelContext: context)
+        manager.observeBudget(monitor)
     }
 }
