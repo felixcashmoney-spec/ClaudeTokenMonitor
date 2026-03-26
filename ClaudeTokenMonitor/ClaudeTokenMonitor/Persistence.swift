@@ -1,11 +1,8 @@
 import SwiftData
 
-/// Central ModelContainer for Claude Token Monitor.
-/// Phase 2 registers Session and TokenRecord models here.
 @MainActor
 let sharedModelContainer: ModelContainer = {
-    // No schema types yet — Phase 2 adds @Model classes here.
-    let schema = Schema([])
+    let schema = Schema([Session.self, TokenRecord.self])
     let config = ModelConfiguration(schema: schema, isStoredInMemoryOnly: false)
     do {
         return try ModelContainer(for: schema, configurations: [config])

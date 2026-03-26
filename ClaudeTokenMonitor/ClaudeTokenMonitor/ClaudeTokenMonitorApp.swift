@@ -15,8 +15,11 @@ struct ClaudeTokenMonitorApp: App {
 
 class AppDelegate: NSObject, NSApplicationDelegate {
     private var menubarManager: MenubarManager?
+    let sessionWatcher = SessionWatcher()
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         menubarManager = MenubarManager()
+        let context = sharedModelContainer.mainContext
+        sessionWatcher.start(modelContext: context)
     }
 }

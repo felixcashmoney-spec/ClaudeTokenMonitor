@@ -15,6 +15,10 @@
 		AA000001000000000000006A /* Persistence.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA000001000000000000006B /* Persistence.swift */; };
 		AA000001000000000000007A /* LoginItemManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA000001000000000000007B /* LoginItemManager.swift */; };
 		AA000001000000000000008A /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA000001000000000000008B /* SettingsView.swift */; };
+		AA000001000000000000009A /* Session.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA000001000000000000009B /* Session.swift */; };
+		AA00000100000000000000AA /* TokenRecord.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00000100000000000000AC /* TokenRecord.swift */; };
+		AA00000100000000000000BA /* JSONLParser.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00000100000000000000BC /* JSONLParser.swift */; };
+		AA00000100000000000000CA /* SessionWatcher.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00000100000000000000CC /* SessionWatcher.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -27,6 +31,10 @@
 		AA000001000000000000006B /* Persistence.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Persistence.swift; sourceTree = "<group>"; };
 		AA000001000000000000007B /* LoginItemManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LoginItemManager.swift; sourceTree = "<group>"; };
 		AA000001000000000000008B /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
+		AA000001000000000000009B /* Session.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Session.swift; sourceTree = "<group>"; };
+		AA00000100000000000000AC /* TokenRecord.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TokenRecord.swift; sourceTree = "<group>"; };
+		AA00000100000000000000BC /* JSONLParser.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = JSONLParser.swift; sourceTree = "<group>"; };
+		AA00000100000000000000CC /* SessionWatcher.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionWatcher.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -49,10 +57,30 @@
 				AA000001000000000000006B /* Persistence.swift */,
 				AA000001000000000000007B /* LoginItemManager.swift */,
 				AA000001000000000000008B /* SettingsView.swift */,
+				AA00000100000000000000DC /* Models */,
+				AA00000100000000000000EC /* Services */,
 				AA000001000000000000004B /* Assets.xcassets */,
 				AA000001000000000000005B /* Info.plist */,
 			);
 			path = ClaudeTokenMonitor;
+			sourceTree = "<group>";
+		};
+		AA00000100000000000000DC /* Models */ = {
+			isa = PBXGroup;
+			children = (
+				AA000001000000000000009B /* Session.swift */,
+				AA00000100000000000000AC /* TokenRecord.swift */,
+			);
+			path = Models;
+			sourceTree = "<group>";
+		};
+		AA00000100000000000000EC /* Services */ = {
+			isa = PBXGroup;
+			children = (
+				AA00000100000000000000BC /* JSONLParser.swift */,
+				AA00000100000000000000CC /* SessionWatcher.swift */,
+			);
+			path = Services;
 			sourceTree = "<group>";
 		};
 		AA00000100000000000000DB /* Products */ = {
@@ -146,6 +174,10 @@
 				AA000001000000000000006A /* Persistence.swift in Sources */,
 				AA000001000000000000007A /* LoginItemManager.swift in Sources */,
 				AA000001000000000000008A /* SettingsView.swift in Sources */,
+				AA000001000000000000009A /* Session.swift in Sources */,
+				AA00000100000000000000AA /* TokenRecord.swift in Sources */,
+				AA00000100000000000000BA /* JSONLParser.swift in Sources */,
+				AA00000100000000000000CA /* SessionWatcher.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
