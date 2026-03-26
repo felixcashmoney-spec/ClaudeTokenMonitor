@@ -67,9 +67,195 @@ struct BudgetBanner: View {
     }
 }
 
+struct PlanUsageBanner: View {
+    let tokenRecords: [TokenRecord]
+
+    private let windowDuration: TimeInterval = 5 * 60 * 60
+
+    private var lastRateLimit: TokenRecord? {
+        tokenRecords
+            .sorted { $0.timestamp > $1.timestamp }
+            .first { $0.isRateLimited }
+    }
+
+    private var learnedLimit: Int? {
+        guard let limitEvent = lastRateLimit else { return nil }
+        let windowStart = limitEvent.timestamp.addingTimeInterval(-windowDuration)
+        let tokensBeforeLimit = tokenRecords
+            .filter { $0.timestamp >= windowStart && $0.timestamp <= limitEvent.timestamp && !$0.isRateLimited }
+            .reduce(0) { $0 + $1.totalTokens }
+        return tokensBeforeLimit > 0 ? tokensBeforeLimit : nil
+    }
+
+    private var tokensInCurrentWindow: Int {
+        let windowStart = Date().addingTimeInterval(-windowDuration)
+        return tokenRecords
+            .filter { $0.timestamp >= windowStart && !$0.isRateLimited }
+            .reduce(0) { $0 + $1.totalTokens }
+    }
+
+    private var isCurrentlyLimited: Bool {
+        guard let limitEvent = lastRateLimit else { return false }
+        let resetTime = limitEvent.timestamp.addingTimeInterval(windowDuration)
+        return Date() < resetTime
+    }
+
+    private var resetTime: Date? {
+        guard let limitEvent = lastRateLimit else { return nil }
+        let reset = limitEvent.timestamp.addingTimeInterval(windowDuration)
+        return Date() < reset ? reset : nil
+    }
+
+    var body: some View {
+        if let limit = learnedLimit {
+            let used = tokensInCurrentWindow
+            let remaining = max(0, limit - used)
+            let percent = min(1.0, Double(used) / Double(limit))
+            let color: Color = isCurrentlyLimited ? .red : (percent > 0.8 ? .orange : (percent > 0.5 ? .yellow : .green))
+
+            VStack(alignment: .leading, spacing: 6) {
+                HStack {
+                    Image(systemName: "gauge.with.dots.needle.33percent")
+                        .font(.caption)
+                        .foregroundStyle(color)
+                    Text("Pro Plan Nutzung (5h-Fenster)")
+                        .font(.caption.weight(.medium))
+                    Spacer()
+                }
+
+                if isCurrentlyLimited {
+                    HStack(spacing: 4) {
+                        Image(systemName: "clock.badge.exclamationmark")
+                            .font(.caption2)
+                            .foregroundStyle(.red)
+                        if let reset = resetTime {
+                            Text("Limit erreicht — Reset um \(reset, style: .time)")
+                                .font(.caption2)
+                                .foregroundStyle(.red)
+                        }
+                    }
+                } else {
+                    HStack {
+                        Text("Noch verfügbar:")
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                        Text("~\(TokenFormatter.format(remaining)) Tokens")
+                            .font(.caption2.weight(.medium).monospacedDigit())
+                            .foregroundStyle(color)
+                        Spacer()
+                        Text("\(Int(percent * 100))% verbraucht")
+                            .font(.caption2.monospacedDigit())
+                            .foregroundStyle(.secondary)
+                    }
+                }
+
+                GeometryReader { geo in
+                    ZStack(alignment: .leading) {
+                        RoundedRectangle(cornerRadius: 3)
+                            .fill(color.opacity(0.2))
+                        RoundedRectangle(cornerRadius: 3)
+                            .fill(color)
+                            .frame(width: geo.size.width * percent)
+                    }
+                }
+                .frame(height: 6)
+
+                Text("Basierend auf deinem letzten Rate-Limit (~\(TokenFormatter.format(limit)) Tokens pro 5h)")
+                    .font(.system(size: 9))
+                    .foregroundStyle(.tertiary)
+            }
+            .padding(10)
+            .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 10))
+        } else {
+            VStack(alignment: .leading, spacing: 4) {
+                HStack {
+                    Image(systemName: "gauge.with.dots.needle.33percent")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    Text("Pro Plan Nutzung")
+                        .font(.caption.weight(.medium))
+                }
+                Text("Noch kein Rate-Limit erkannt. Sobald du einmal ans Limit kommst, lernt die App dein verfügbares Kontingent und zeigt den Restverbrauch an.")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+            }
+            .padding(10)
+            .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 10))
+        }
+    }
+}
+
+struct CurrentSessionBanner: View {
+    let session: Session
+
+    private var sessionDuration: String {
+        let elapsed = Date().timeIntervalSince(session.createdAt)
+        let hours = Int(elapsed) / 3600
+        let minutes = (Int(elapsed) % 3600) / 60
+        if hours > 0 {
+            return "\(hours)h \(minutes)m"
+        } else {
+            return "\(minutes)m"
+        }
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            // Header row
+            HStack {
+                Image(systemName: "terminal")
+                    .font(.caption)
+                    .foregroundStyle(.green)
+                Text(session.projectName)
+                    .font(.caption.weight(.bold))
+                    .lineLimit(1)
+                Spacer()
+                Text("seit \(sessionDuration)")
+                    .font(.caption2.monospacedDigit())
+                    .foregroundStyle(.secondary)
+            }
+
+            // Token stats row
+            HStack {
+                VStack(spacing: 2) {
+                    Text(TokenFormatter.format(session.totalTokens))
+                        .font(.caption2.monospacedDigit())
+                    Text("Gesamt")
+                        .font(.system(size: 9))
+                        .foregroundStyle(.secondary)
+                }
+                Spacer()
+                VStack(spacing: 2) {
+                    Text(TokenFormatter.format(session.totalInputTokens))
+                        .font(.caption2.monospacedDigit())
+                    Text("Input")
+                        .font(.system(size: 9))
+                        .foregroundStyle(.secondary)
+                }
+                Spacer()
+                VStack(spacing: 2) {
+                    Text(TokenFormatter.format(session.totalOutputTokens))
+                        .font(.caption2.monospacedDigit())
+                    Text("Output")
+                        .font(.system(size: 9))
+                        .foregroundStyle(.secondary)
+                }
+            }
+
+            // Activity indicator
+            Text("Letzte Aktivitaet: \(session.lastActivityAt, style: .relative) zurueck")
+                .font(.system(size: 9))
+                .foregroundStyle(.tertiary)
+        }
+        .padding(10)
+        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 10))
+    }
+}
+
 struct DashboardView: View {
     @Query private var sessions: [Session]
     @Query private var budgetSettings: [BudgetSettings]
+    @Query private var allTokenRecords: [TokenRecord]
     @Environment(\.modelContext) private var modelContext
     @State private var timeFilter: TimeFilter = .today
 
@@ -112,6 +298,10 @@ struct DashboardView: View {
         sessions.compactMap { $0.lastRateLimitMessage }.last
     }
 
+    private var currentSession: Session? {
+        sessions.sorted { $0.lastActivityAt > $1.lastActivityAt }.first
+    }
+
     private var monthlyTokens: Int {
         let cal = Calendar.current
         let startOfMonth = cal.date(from: cal.dateComponents([.year, .month], from: Date())) ?? Date()
@@ -151,6 +341,14 @@ struct DashboardView: View {
                     .pickerStyle(.segmented)
                     .frame(width: 180)
                 }
+
+                // Current session banner
+                if let session = currentSession {
+                    CurrentSessionBanner(session: session)
+                }
+
+                // Plan usage — shows remaining tokens in current 5h window
+                PlanUsageBanner(tokenRecords: allTokenRecords)
 
                 Divider()
 
@@ -192,35 +390,6 @@ struct DashboardView: View {
                         currentTokens: monthlyTokens,
                         budget: budgetSettings.first?.monthlyBudget ?? 0
                     )
-                }
-
-                // Rate limit / plan status
-                if rateLimitEvents > 0 || latestRateLimitMessage != nil {
-                    VStack(alignment: .leading, spacing: 4) {
-                        HStack {
-                            Image(systemName: "exclamationmark.octagon.fill")
-                                .foregroundStyle(.red)
-                            Text("Plan-Limit erreicht")
-                                .font(.caption.weight(.medium))
-                            if rateLimitEvents > 0 {
-                                Text("(\(rateLimitEvents)x im Zeitraum)")
-                                    .font(.caption)
-                                    .foregroundStyle(.secondary)
-                            }
-                        }
-                        if let msg = latestRateLimitMessage {
-                            Text(msg)
-                                .font(.caption2)
-                                .foregroundStyle(.secondary)
-                        }
-                        Text("Claude hat dein Nutzungslimit erreicht. Warte auf den Reset oder upgrade deinen Plan.")
-                            .font(.caption2)
-                            .foregroundStyle(.secondary)
-                    }
-                    .padding(.horizontal, 10)
-                    .padding(.vertical, 8)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .background(.red.opacity(0.1), in: RoundedRectangle(cornerRadius: 8))
                 }
 
                 Divider()
@@ -271,7 +440,7 @@ struct DashboardView: View {
             }
             .padding(16)
         }
-        .frame(width: 400, height: 460)
+        .frame(width: 400, height: 500)
     }
 }
 
