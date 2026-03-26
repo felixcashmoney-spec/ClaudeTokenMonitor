@@ -12,6 +12,9 @@
 		AA000001000000000000003A /* MenubarView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA000001000000000000003B /* MenubarView.swift */; };
 		AA000001000000000000004A /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = AA000001000000000000004B /* Assets.xcassets */; };
 		AA000001000000000000005A /* Info.plist in Resources */ = {isa = PBXBuildFile; fileRef = AA000001000000000000005B /* Info.plist */; };
+		AA000001000000000000006A /* Persistence.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA000001000000000000006B /* Persistence.swift */; };
+		AA000001000000000000007A /* LoginItemManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA000001000000000000007B /* LoginItemManager.swift */; };
+		AA000001000000000000008A /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA000001000000000000008B /* SettingsView.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -21,6 +24,9 @@
 		AA000001000000000000004B /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		AA000001000000000000005B /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		AA00000100000000000000AB /* ClaudeTokenMonitor.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = ClaudeTokenMonitor.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		AA000001000000000000006B /* Persistence.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Persistence.swift; sourceTree = "<group>"; };
+		AA000001000000000000007B /* LoginItemManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LoginItemManager.swift; sourceTree = "<group>"; };
+		AA000001000000000000008B /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -40,6 +46,9 @@
 				AA000001000000000000001B /* ClaudeTokenMonitorApp.swift */,
 				AA000001000000000000002B /* MenubarManager.swift */,
 				AA000001000000000000003B /* MenubarView.swift */,
+				AA000001000000000000006B /* Persistence.swift */,
+				AA000001000000000000007B /* LoginItemManager.swift */,
+				AA000001000000000000008B /* SettingsView.swift */,
 				AA000001000000000000004B /* Assets.xcassets */,
 				AA000001000000000000005B /* Info.plist */,
 			);
@@ -134,6 +143,9 @@
 				AA000001000000000000001A /* ClaudeTokenMonitorApp.swift in Sources */,
 				AA000001000000000000002A /* MenubarManager.swift in Sources */,
 				AA000001000000000000003A /* MenubarView.swift in Sources */,
+				AA000001000000000000006A /* Persistence.swift in Sources */,
+				AA000001000000000000007A /* LoginItemManager.swift in Sources */,
+				AA000001000000000000008A /* SettingsView.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
