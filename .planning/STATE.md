@@ -3,9 +3,9 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-stopped_at: Completed 01-app-foundation-01-01-PLAN.md
-last_updated: "2026-03-26T15:13:51.031Z"
-last_activity: 2026-03-26
+stopped_at: Completed quick task 260327-pc1
+last_updated: "2026-03-27T01:30:00.000Z"
+last_activity: 2026-03-27
 progress:
   total_phases: 5
   completed_phases: 0
@@ -28,7 +28,7 @@ See: .planning/PROJECT.md (updated 2026-03-26)
 Phase: 01 (app-foundation) — EXECUTING
 Plan: 2 of 3
 Status: Ready to execute
-Last activity: 2026-03-26
+Last activity: 2026-03-27
 
 Progress: [░░░░░░░░░░] 0%
 
@@ -53,6 +53,7 @@ Progress: [░░░░░░░░░░] 0%
 
 *Updated after each plan completion*
 | Phase 01-app-foundation P01 | 5 | 2 tasks | 7 files |
+| Phase quick P260327-1d5 | 8 | 1 tasks | 5 files |
 
 ## Accumulated Context
 
@@ -67,6 +68,10 @@ Recent decisions affecting current work:
 - Init: Manuelles Budget — Pro Plan hat kein festes Token-Limit
 - [Phase 01-app-foundation]: AppDelegate pattern for menubar-only apps — @StateObject unreliable without main window
 - [Phase 01-app-foundation]: NSPopover.behavior=.transient — auto-dismiss without custom event monitoring
+- [Phase quick]: Injected UsageWindowTracker as EnvironmentObject via MenubarManager to centralize 5h window computation
+- [Phase quick-260327-pc1]: LogFileParser owned internally by UsageWindowTracker — authoritative log data preferred over token estimates when fresh (<6h)
+- [Phase quick-260327-pc1]: JSONSerialization used for log JSON parsing due to dynamic window keys (5h, 7d)
+- [Phase quick-260327-pc1]: TokenRecord.timestamp used for time-filtered token sums instead of session.lastActivityAt
 
 ### Pending Todos
 
@@ -76,8 +81,17 @@ None yet.
 
 - The mechanism for reading Claude Code session data (log files, IPC, file system watching) is not yet determined. This is the key technical risk for Phase 2 and should be researched first.
 
+### Quick Tasks Completed
+
+| # | Description | Date | Commit | Directory |
+|---|-------------|------|--------|-----------|
+| 260327-14j | Add remaining session usage display | 2026-03-27 | edcb2f1 | [260327-14j-add-remaining-session-usage-display](./quick/260327-14j-add-remaining-session-usage-display/) |
+| 260327-1d5 | Fix remaining session usage display and wire UsageWindowTracker | 2026-03-27 | 6f6c682 | [260327-1d5-fix-remaining-session-usage-display-and-](./quick/260327-1d5-fix-remaining-session-usage-display-and-/) |
+| 260327-ox0 | Fix reset time parsing, project discovery, and add dashboard improvements | 2026-03-27 | 5d7cb65 | [260327-ox0-fix-reset-time-parsing-project-discovery](./quick/260327-ox0-fix-reset-time-parsing-project-discovery/) |
+| 260327-pc1 | Major accuracy overhaul — parse Claude Desktop log for authoritative rate limit data | 2026-03-27 | 65ebea6 | [260327-pc1-major-accuracy-overhaul-parse-claude-des](./quick/260327-pc1-major-accuracy-overhaul-parse-claude-des/) |
+
 ## Session Continuity
 
-Last session: 2026-03-26T15:13:51.028Z
-Stopped at: Completed 01-app-foundation-01-01-PLAN.md
+Last session: 2026-03-27T01:30:00.000Z
+Stopped at: Completed quick task 260327-pc1
 Resume file: None

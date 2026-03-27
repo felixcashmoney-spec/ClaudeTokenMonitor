@@ -9,6 +9,7 @@ final class Session {
     var model: String
     var createdAt: Date
     var lastActivityAt: Date
+    var lastRateLimitMessage: String?
 
     @Relationship(deleteRule: .cascade, inverse: \TokenRecord.session)
     var tokenRecords: [TokenRecord] = []
@@ -36,9 +37,15 @@ final class Session {
     init(sessionId: String, projectPath: String, model: String, createdAt: Date) {
         self.sessionId = sessionId
         self.projectPath = projectPath
-        self.projectName = (projectPath as NSString).lastPathComponent
+        self.projectName = Session.extractProjectName(from: projectPath)
         self.model = model
         self.createdAt = createdAt
         self.lastActivityAt = createdAt
+    }
+
+    static func extractProjectName(from path: String) -> String {
+        // The path is the actual cwd like "/Users/felixleis/ClaudeCode"
+        // Just take the last component
+        return (path as NSString).lastPathComponent
     }
 }
