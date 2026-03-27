@@ -3,8 +3,8 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-stopped_at: Completed quick task 260327-1d5
-last_updated: "2026-03-27T00:04:59.593Z"
+stopped_at: Completed quick task 260327-pc1
+last_updated: "2026-03-27T01:30:00.000Z"
 last_activity: 2026-03-27
 progress:
   total_phases: 5
@@ -69,6 +69,9 @@ Recent decisions affecting current work:
 - [Phase 01-app-foundation]: AppDelegate pattern for menubar-only apps — @StateObject unreliable without main window
 - [Phase 01-app-foundation]: NSPopover.behavior=.transient — auto-dismiss without custom event monitoring
 - [Phase quick]: Injected UsageWindowTracker as EnvironmentObject via MenubarManager to centralize 5h window computation
+- [Phase quick-260327-pc1]: LogFileParser owned internally by UsageWindowTracker — authoritative log data preferred over token estimates when fresh (<6h)
+- [Phase quick-260327-pc1]: JSONSerialization used for log JSON parsing due to dynamic window keys (5h, 7d)
+- [Phase quick-260327-pc1]: TokenRecord.timestamp used for time-filtered token sums instead of session.lastActivityAt
 
 ### Pending Todos
 
@@ -84,9 +87,10 @@ None yet.
 |---|-------------|------|--------|-----------|
 | 260327-14j | Add remaining session usage display | 2026-03-27 | edcb2f1 | [260327-14j-add-remaining-session-usage-display](./quick/260327-14j-add-remaining-session-usage-display/) |
 | 260327-1d5 | Fix remaining session usage display and wire UsageWindowTracker | 2026-03-27 | 6f6c682 | [260327-1d5-fix-remaining-session-usage-display-and-](./quick/260327-1d5-fix-remaining-session-usage-display-and-/) |
+| 260327-pc1 | Major accuracy overhaul — parse Claude Desktop log for authoritative rate limit data | 2026-03-27 | 65ebea6 | [260327-pc1-major-accuracy-overhaul-parse-claude-des](./quick/260327-pc1-major-accuracy-overhaul-parse-claude-des/) |
 
 ## Session Continuity
 
-Last session: 2026-03-27T00:04:50.380Z
-Stopped at: Completed quick task 260327-1d5
+Last session: 2026-03-27T01:30:00.000Z
+Stopped at: Completed quick task 260327-pc1
 Resume file: None
