@@ -11,11 +11,48 @@ final class MenubarManager: NSObject, ObservableObject {
     private var budgetMonitor: BudgetMonitor?
     private var usageTracker: UsageWindowTracker?
     private var cancellable: AnyCancellable?
+    nonisolated(unsafe) private var globalKeyMonitor: Any?
+    nonisolated(unsafe) private var localKeyMonitor: Any?
 
     override init() {
         super.init()
         setupStatusItem()
         setupPopover()
+        setupKeyboardShortcut()
+    }
+
+    deinit {
+        if let monitor = globalKeyMonitor {
+            NSEvent.removeMonitor(monitor)
+        }
+        if let monitor = localKeyMonitor {
+            NSEvent.removeMonitor(monitor)
+        }
+    }
+
+    /// Set up Cmd+Shift+T global keyboard shortcut to toggle the popover.
+    private func setupKeyboardShortcut() {
+        // Global monitor: catches shortcut when app is in the background
+        globalKeyMonitor = NSEvent.addGlobalMonitorForEvents(matching: .keyDown) { [weak self] event in
+            if event.modifierFlags.contains([.command, .shift])
+                && event.charactersIgnoringModifiers?.lowercased() == "t" {
+                Task { @MainActor in
+                    self?.togglePopover(nil)
+                }
+            }
+        }
+
+        // Local monitor: catches shortcut when the app window is active; consumes the event
+        localKeyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
+            if event.modifierFlags.contains([.command, .shift])
+                && event.charactersIgnoringModifiers?.lowercased() == "t" {
+                Task { @MainActor in
+                    self?.togglePopover(nil)
+                }
+                return nil  // consume the event
+            }
+            return event
+        }
     }
 
     func observeBudget(_ monitor: BudgetMonitor) {

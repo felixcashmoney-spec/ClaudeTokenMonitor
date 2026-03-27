@@ -150,6 +150,7 @@ struct PlanUsageBanner: View {
 
 struct CurrentSessionBanner: View {
     let session: Session
+    @State private var dotOpacity: Double = 1.0
 
     private var sessionDuration: String {
         let elapsed = Date().timeIntervalSince(session.createdAt)
@@ -166,6 +167,16 @@ struct CurrentSessionBanner: View {
         VStack(alignment: .leading, spacing: 6) {
             // Header row
             HStack {
+                // Pulsing green dot to indicate "live"
+                Circle()
+                    .fill(.green)
+                    .frame(width: 6, height: 6)
+                    .opacity(dotOpacity)
+                    .onAppear {
+                        withAnimation(.easeInOut(duration: 1.2).repeatForever(autoreverses: true)) {
+                            dotOpacity = 0.2
+                        }
+                    }
                 Image(systemName: "terminal")
                     .font(.caption)
                     .foregroundStyle(.green)
@@ -211,7 +222,23 @@ struct CurrentSessionBanner: View {
                 .foregroundStyle(.tertiary)
         }
         .padding(10)
-        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 10))
+        .background(.green.opacity(0.05))
+        .background(.ultraThinMaterial)
+        .clipShape(RoundedRectangle(cornerRadius: 10))
+        .overlay(alignment: .leading) {
+            // Green left border accent
+            Rectangle()
+                .fill(.green)
+                .frame(width: 3)
+                .clipShape(
+                    UnevenRoundedRectangle(
+                        topLeadingRadius: 10,
+                        bottomLeadingRadius: 10,
+                        bottomTrailingRadius: 0,
+                        topTrailingRadius: 0
+                    )
+                )
+        }
     }
 }
 
@@ -237,6 +264,23 @@ struct DashboardView: View {
 
     private var totalCache: Int {
         filteredSessions.reduce(0) { $0 + $1.totalCacheCreationTokens + $1.totalCacheReadTokens }
+    }
+
+    private var totalCacheCreation: Int {
+        filteredSessions.reduce(0) { $0 + $1.totalCacheCreationTokens }
+    }
+
+    private var totalCacheRead: Int {
+        filteredSessions.reduce(0) { $0 + $1.totalCacheReadTokens }
+    }
+
+    /// Estimated API cost in USD using Claude Sonnet 4 pricing.
+    /// Note: Pro Plan users don't pay per-token — this is a "what it would cost" reference value.
+    private var estimatedCost: Double {
+        (Double(totalInput) * 3.0
+            + Double(totalOutput) * 15.0
+            + Double(totalCacheCreation) * 3.75
+            + Double(totalCacheRead) * 0.30) / 1_000_000
     }
 
     private var totalAll: Int {
@@ -344,6 +388,20 @@ struct DashboardView: View {
                         value: TokenFormatter.format(totalCache),
                         color: .orange
                     )
+                }
+
+                // Estimated API cost row
+                HStack {
+                    Image(systemName: "dollarsign.circle")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                    Text("Geschaetzter API-Wert: $\(String(format: "%.2f", estimatedCost))")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                    Spacer()
+                    Text("(Sonnet 4 Preise)")
+                        .font(.system(size: 9))
+                        .foregroundStyle(.tertiary)
                 }
 
                 // Budget banner
