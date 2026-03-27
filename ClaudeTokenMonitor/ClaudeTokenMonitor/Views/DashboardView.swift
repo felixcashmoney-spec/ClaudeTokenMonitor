@@ -68,50 +68,13 @@ struct BudgetBanner: View {
 }
 
 struct PlanUsageBanner: View {
-    let tokenRecords: [TokenRecord]
-
-    private let windowDuration: TimeInterval = 5 * 60 * 60
-
-    private var lastRateLimit: TokenRecord? {
-        tokenRecords
-            .sorted { $0.timestamp > $1.timestamp }
-            .first { $0.isRateLimited }
-    }
-
-    private var learnedLimit: Int? {
-        guard let limitEvent = lastRateLimit else { return nil }
-        let windowStart = limitEvent.timestamp.addingTimeInterval(-windowDuration)
-        let tokensBeforeLimit = tokenRecords
-            .filter { $0.timestamp >= windowStart && $0.timestamp <= limitEvent.timestamp && !$0.isRateLimited }
-            .reduce(0) { $0 + $1.totalTokens }
-        return tokensBeforeLimit > 0 ? tokensBeforeLimit : nil
-    }
-
-    private var tokensInCurrentWindow: Int {
-        let windowStart = Date().addingTimeInterval(-windowDuration)
-        return tokenRecords
-            .filter { $0.timestamp >= windowStart && !$0.isRateLimited }
-            .reduce(0) { $0 + $1.totalTokens }
-    }
-
-    private var isCurrentlyLimited: Bool {
-        guard let limitEvent = lastRateLimit else { return false }
-        let resetTime = limitEvent.timestamp.addingTimeInterval(windowDuration)
-        return Date() < resetTime
-    }
-
-    private var resetTime: Date? {
-        guard let limitEvent = lastRateLimit else { return nil }
-        let reset = limitEvent.timestamp.addingTimeInterval(windowDuration)
-        return Date() < reset ? reset : nil
-    }
+    let window: UsageWindow?
 
     var body: some View {
-        if let limit = learnedLimit {
-            let used = tokensInCurrentWindow
-            let remaining = max(0, limit - used)
-            let percent = min(1.0, Double(used) / Double(limit))
-            let color: Color = isCurrentlyLimited ? .red : (percent > 0.8 ? .orange : (percent > 0.5 ? .yellow : .green))
+        if let window, let limit = window.learnedLimit {
+            let remaining = window.remaining ?? 0
+            let percent = window.usagePercent.map { min(1.0, $0) } ?? 0.0
+            let color: Color = window.isLimited ? .red : (percent > 0.8 ? .orange : (percent > 0.5 ? .yellow : .green))
 
             VStack(alignment: .leading, spacing: 6) {
                 HStack {
@@ -123,12 +86,12 @@ struct PlanUsageBanner: View {
                     Spacer()
                 }
 
-                if isCurrentlyLimited {
+                if window.isLimited {
                     HStack(spacing: 4) {
                         Image(systemName: "clock.badge.exclamationmark")
                             .font(.caption2)
                             .foregroundStyle(.red)
-                        if let reset = resetTime {
+                        if let reset = window.resetTime {
                             Text("Limit erreicht — Reset um \(reset, style: .time)")
                                 .font(.caption2)
                                 .foregroundStyle(.red)
@@ -255,7 +218,7 @@ struct CurrentSessionBanner: View {
 struct DashboardView: View {
     @Query private var sessions: [Session]
     @Query private var budgetSettings: [BudgetSettings]
-    @Query private var allTokenRecords: [TokenRecord]
+    @EnvironmentObject private var usageTracker: UsageWindowTracker
     @Environment(\.modelContext) private var modelContext
     @State private var timeFilter: TimeFilter = .today
 
@@ -348,7 +311,7 @@ struct DashboardView: View {
                 }
 
                 // Plan usage — shows remaining tokens in current 5h window
-                PlanUsageBanner(tokenRecords: allTokenRecords)
+                PlanUsageBanner(window: usageTracker.currentWindow)
 
                 Divider()
 

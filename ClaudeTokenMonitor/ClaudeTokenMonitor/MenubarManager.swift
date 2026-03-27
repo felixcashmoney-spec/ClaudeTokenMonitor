@@ -9,6 +9,7 @@ final class MenubarManager: NSObject, ObservableObject {
     private var statusItem: NSStatusItem!
     private var popover: NSPopover!
     private var budgetMonitor: BudgetMonitor?
+    private var usageTracker: UsageWindowTracker?
     private var cancellable: AnyCancellable?
 
     override init() {
@@ -26,6 +27,11 @@ final class MenubarManager: NSObject, ObservableObject {
             }
     }
 
+    func observeTracker(_ tracker: UsageWindowTracker) {
+        usageTracker = tracker
+        updatePopoverContent()
+    }
+
     private func setupStatusItem() {
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
         if let button = statusItem.button {
@@ -39,10 +45,24 @@ final class MenubarManager: NSObject, ObservableObject {
         popover = NSPopover()
         popover.contentSize = NSSize(width: 400, height: 460)
         popover.behavior = .transient
-        popover.contentViewController = NSHostingController(
-            rootView: MenubarView()
-                .modelContainer(sharedModelContainer)
-        )
+        updatePopoverContent()
+    }
+
+    private func updatePopoverContent() {
+        let rootView: AnyView
+        if let tracker = usageTracker {
+            rootView = AnyView(
+                MenubarView()
+                    .modelContainer(sharedModelContainer)
+                    .environmentObject(tracker)
+            )
+        } else {
+            rootView = AnyView(
+                MenubarView()
+                    .modelContainer(sharedModelContainer)
+            )
+        }
+        popover.contentViewController = NSHostingController(rootView: rootView)
     }
 
     private func updateIcon(for state: BudgetState) {
