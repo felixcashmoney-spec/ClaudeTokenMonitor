@@ -3,8 +3,8 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-stopped_at: Completed 01-app-foundation-01-01-PLAN.md
-last_updated: "2026-03-26T15:13:51.031Z"
+stopped_at: Completed quick task 260327-1d5
+last_updated: "2026-03-27T00:04:59.593Z"
 last_activity: 2026-03-27
 progress:
   total_phases: 5
@@ -53,6 +53,7 @@ Progress: [░░░░░░░░░░] 0%
 
 *Updated after each plan completion*
 | Phase 01-app-foundation P01 | 5 | 2 tasks | 7 files |
+| Phase quick P260327-1d5 | 8 | 1 tasks | 5 files |
 
 ## Accumulated Context
 
@@ -67,6 +68,7 @@ Recent decisions affecting current work:
 - Init: Manuelles Budget — Pro Plan hat kein festes Token-Limit
 - [Phase 01-app-foundation]: AppDelegate pattern for menubar-only apps — @StateObject unreliable without main window
 - [Phase 01-app-foundation]: NSPopover.behavior=.transient — auto-dismiss without custom event monitoring
+- [Phase quick]: Injected UsageWindowTracker as EnvironmentObject via MenubarManager to centralize 5h window computation
 
 ### Pending Todos
 
@@ -81,9 +83,10 @@ None yet.
 | # | Description | Date | Commit | Directory |
 |---|-------------|------|--------|-----------|
 | 260327-14j | Add remaining session usage display | 2026-03-27 | edcb2f1 | [260327-14j-add-remaining-session-usage-display](./quick/260327-14j-add-remaining-session-usage-display/) |
+| 260327-1d5 | Fix remaining session usage display and wire UsageWindowTracker | 2026-03-27 | 6f6c682 | [260327-1d5-fix-remaining-session-usage-display-and-](./quick/260327-1d5-fix-remaining-session-usage-display-and-/) |
 
 ## Session Continuity
 
-Last session: 2026-03-26T15:13:51.028Z
-Stopped at: Completed 01-app-foundation-01-01-PLAN.md
+Last session: 2026-03-27T00:04:50.380Z
+Stopped at: Completed quick task 260327-1d5
 Resume file: None
