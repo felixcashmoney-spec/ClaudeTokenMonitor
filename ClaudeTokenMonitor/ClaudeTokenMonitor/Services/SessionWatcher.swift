@@ -11,6 +11,8 @@ final class SessionWatcher: ObservableObject {
     private var fileOffsets: [URL: UInt64] = [:]
     private var timer: Timer?
 
+    private var projectPathCache: [String: String] = [:]
+
     private var claudeProjectsURL: URL {
         FileManager.default.homeDirectoryForCurrentUser
             .appendingPathComponent(".claude/projects")
@@ -73,7 +75,8 @@ final class SessionWatcher: ObservableObject {
                         outputTokens: record.outputTokens,
                         cacheCreationInputTokens: record.cacheCreationInputTokens,
                         cacheReadInputTokens: record.cacheReadInputTokens,
-                        isRateLimited: record.isRateLimited
+                        isRateLimited: record.isRateLimited,
+                        rateLimitResetMessage: record.rateLimitResetMessage
                     )
                     tokenRecord.session = session
                     session.tokenRecords.append(tokenRecord)
@@ -128,7 +131,8 @@ final class SessionWatcher: ObservableObject {
                     outputTokens: record.outputTokens,
                     cacheCreationInputTokens: record.cacheCreationInputTokens,
                     cacheReadInputTokens: record.cacheReadInputTokens,
-                    isRateLimited: record.isRateLimited
+                    isRateLimited: record.isRateLimited,
+                    rateLimitResetMessage: record.rateLimitResetMessage
                 )
                 tokenRecord.session = session
                 session.tokenRecords.append(tokenRecord)
@@ -175,18 +179,66 @@ final class SessionWatcher: ObservableObject {
         while current.path != projectsPath && current.path != "/" {
             let parent = current.deletingLastPathComponent()
             if parent.path == projectsPath {
-                // current is the project directory
-                // Directory name like "-Users-felixleis-ClaudeCode"
-                // First char is always "-" (leading slash), rest are path components
                 let dirName = current.lastPathComponent
-                if dirName.hasPrefix("-") {
-                    return dirName.replacingOccurrences(of: "-", with: "/")
-                }
-                return dirName
+                return resolveProjectDirName(dirName)
             }
             current = parent
         }
         return "Unknown"
+    }
+
+    /// Resolve a Claude projects directory name (e.g. "-Users-felixleis-ClaudeCode-skills-installieren")
+    /// to an actual filesystem path using greedy component matching.
+    ///
+    /// The Claude projects dir uses "-" as a path separator, but project names themselves
+    /// may contain dashes. We validate against the filesystem to disambiguate.
+    private func resolveProjectDirName(_ dirName: String) -> String {
+        // Check cache first
+        if let cached = projectPathCache[dirName] {
+            return cached
+        }
+
+        guard dirName.hasPrefix("-") else {
+            projectPathCache[dirName] = dirName
+            return dirName
+        }
+
+        // Strip leading "-" and split into candidate components
+        let stripped = String(dirName.dropFirst())
+        let parts = stripped.components(separatedBy: "-")
+        guard !parts.isEmpty else {
+            projectPathCache[dirName] = dirName
+            return dirName
+        }
+
+        let fm = FileManager.default
+        // Start building the path — first component is always a top-level dir (e.g. "Users")
+        var resolvedPath = "/" + parts[0]
+        var i = 1
+
+        while i < parts.count {
+            // Try appending next part as a new directory component
+            let candidate = resolvedPath + "/" + parts[i]
+            if fm.fileExists(atPath: candidate) {
+                resolvedPath = candidate
+                i += 1
+            } else {
+                // That directory doesn't exist — try merging with current last segment using dash
+                let dashMerge = resolvedPath + "-" + parts[i]
+                if fm.fileExists(atPath: dashMerge) {
+                    resolvedPath = dashMerge
+                    i += 1
+                } else {
+                    // Neither exists — fall back to treating all remaining parts as slash-separated
+                    // (best effort for unknown structures)
+                    resolvedPath = resolvedPath + "/" + parts[i]
+                    i += 1
+                }
+            }
+        }
+
+        projectPathCache[dirName] = resolvedPath
+        return resolvedPath
     }
 
     private func findOrCreateSession(sessionId: String, projectPath: String, model: String, createdAt: Date) -> Session {

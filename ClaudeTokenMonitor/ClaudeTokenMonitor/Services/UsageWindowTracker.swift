@@ -63,9 +63,11 @@ final class UsageWindowTracker: ObservableObject {
 
         if let limitTime = lastRateLimit?.timestamp,
            now.timeIntervalSince(limitTime) < windowDuration {
-            // We're in a window that had a rate limit — window resets after ~5h
+            // We're in a window that had a rate limit — parse reset time from message or fall back to +5h
             windowStart = limitTime
-            let resetTime = limitTime.addingTimeInterval(windowDuration)
+            let resetMessage = lastRateLimit?.rateLimitResetMessage
+            let resetTime = resetMessage.flatMap { parseResetTime(from: $0, relativeTo: limitTime) }
+                ?? limitTime.addingTimeInterval(windowDuration)
 
             // Learn the limit: sum all tokens from this window's start going back to previous reset
             let learnedLimit = learnTokenLimit(before: limitTime, allRecords: allRecords)
@@ -112,6 +114,84 @@ final class UsageWindowTracker: ObservableObject {
                 isLimited: false
             )
         }
+    }
+
+    /// Parse the actual reset time from a Claude rate limit message.
+    ///
+    /// Handles formats like:
+    ///   "You're out of extra usage · resets 4am (Europe/Berlin)"
+    ///   "You've hit your limit · resets 7pm (Europe/Berlin)"
+    ///   "resets 4:00am (Europe/Berlin)"
+    ///   "resets 16:00 (UTC)"
+    ///
+    /// Returns the next occurrence of that time on or after `relativeTo`.
+    /// Returns nil if parsing fails (caller should fall back to +5h).
+    private func parseResetTime(from message: String, relativeTo date: Date) -> Date? {
+        // Pattern: resets <time> (<timezone>)
+        // Time formats: 4am, 7pm, 4:00am, 16:00
+        let pattern = #"resets\s+(\d{1,2})(?::(\d{2}))?\s*(am|pm)?\s*\(([^)]+)\)"#
+        guard let regex = try? NSRegularExpression(pattern: pattern, options: .caseInsensitive) else {
+            return nil
+        }
+
+        let range = NSRange(message.startIndex..., in: message)
+        guard let match = regex.firstMatch(in: message, range: range) else {
+            return nil
+        }
+
+        // Extract hour
+        guard let hourRange = Range(match.range(at: 1), in: message),
+              let hour = Int(message[hourRange]) else {
+            return nil
+        }
+
+        // Extract optional minutes
+        var minute = 0
+        if let minRange = Range(match.range(at: 2), in: message),
+           let parsedMin = Int(message[minRange]) {
+            minute = parsedMin
+        }
+
+        // Extract optional am/pm
+        var hour24 = hour
+        if let ampmRange = Range(match.range(at: 3), in: message) {
+            let ampm = message[ampmRange].lowercased()
+            if ampm == "pm" && hour != 12 {
+                hour24 = hour + 12
+            } else if ampm == "am" && hour == 12 {
+                hour24 = 0
+            }
+        }
+
+        // Extract timezone
+        guard let tzRange = Range(match.range(at: 4), in: message) else {
+            return nil
+        }
+        let tzString = String(message[tzRange])
+        guard let timezone = TimeZone(identifier: tzString) else {
+            return nil
+        }
+
+        // Build the reset time: find the next occurrence of hour24:minute in the given timezone
+        var cal = Calendar.current
+        cal.timeZone = timezone
+
+        var components = cal.dateComponents(in: timezone, from: date)
+        components.hour = hour24
+        components.minute = minute
+        components.second = 0
+        components.nanosecond = 0
+
+        guard var candidate = cal.date(from: components) else {
+            return nil
+        }
+
+        // If the candidate time is in the past relative to the rate limit event, advance by 1 day
+        if candidate <= date {
+            candidate = cal.date(byAdding: .day, value: 1, to: candidate) ?? candidate
+        }
+
+        return candidate
     }
 
     /// Learn the effective token limit by summing tokens used before the rate limit was hit
