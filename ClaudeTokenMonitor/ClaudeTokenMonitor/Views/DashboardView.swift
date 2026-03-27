@@ -72,10 +72,19 @@ struct PlanUsageBanner: View {
 
     var body: some View {
         if let window, window.fiveHourUtilization != nil || window.learnedLimit != nil {
-            VStack(alignment: .leading, spacing: 8) {
+            VStack(alignment: .leading, spacing: 10) {
+                // Header
+                HStack {
+                    Image(systemName: "chart.bar.xaxis")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    Text("Plan-Nutzungslimits")
+                        .font(.caption.weight(.semibold))
+                }
+
                 // 5h window
                 windowBar(
-                    label: "5h-Fenster",
+                    label: "Aktuelle Sitzung",
                     utilization: window.fiveHourUtilization,
                     tokensUsed: window.tokensUsed,
                     learnedLimit: window.learnedLimit,
@@ -87,8 +96,9 @@ struct PlanUsageBanner: View {
                 // 7d window (only shown when log data is available)
                 if let util7d = window.sevenDayUtilization {
                     Divider()
+
                     windowBar(
-                        label: "7-Tage-Fenster",
+                        label: "Wöchentliche Limits",
                         utilization: util7d,
                         tokensUsed: nil,
                         learnedLimit: nil,
@@ -150,31 +160,36 @@ struct PlanUsageBanner: View {
 
         VStack(alignment: .leading, spacing: 4) {
             HStack {
-                Image(systemName: "gauge.with.dots.needle.33percent")
-                    .font(.caption)
-                    .foregroundStyle(color)
                 Text(label)
                     .font(.caption.weight(.medium))
                 Spacer()
                 if let util = utilization {
-                    Text("\(Int(util * 100))% genutzt")
+                    Text("\(Int(util * 100)) % verwendet")
                         .font(.caption2.monospacedDigit())
                         .foregroundStyle(color)
                 } else {
-                    Text("\(Int(percent * 100))% verbraucht")
+                    Text("\(Int(percent * 100)) % verwendet")
                         .font(.caption2.monospacedDigit())
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(color)
                 }
             }
 
             if isLimited, let reset = resetTime {
-                HStack(spacing: 4) {
-                    Image(systemName: "clock.badge.exclamationmark")
+                Text("Zurücksetzung in \(reset, style: .relative)")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+            } else if let util = utilization, util < 1.0 {
+                let remainingPct = max(0, Int((1.0 - util) * 100))
+                HStack {
+                    Text("Noch \(remainingPct)% verfügbar")
                         .font(.caption2)
-                        .foregroundStyle(.red)
-                    Text("Limit erreicht — Reset um \(reset, style: .time)")
-                        .font(.caption2)
-                        .foregroundStyle(.red)
+                        .foregroundStyle(.secondary)
+                    if let reset = resetTime {
+                        Spacer()
+                        Text("Zurücksetzung in \(reset, style: .relative)")
+                            .font(.caption2)
+                            .foregroundStyle(.tertiary)
+                    }
                 }
             } else if let remaining = {
                 guard let used = tokensUsed, let limit = learnedLimit else { return nil as Int? }
@@ -190,7 +205,7 @@ struct PlanUsageBanner: View {
                     Spacer()
                 }
             } else if let reset = resetTime, !isLimited {
-                Text("Reset: \(reset, style: .relative)")
+                Text("Zurücksetzung in \(reset, style: .relative)")
                     .font(.caption2)
                     .foregroundStyle(.secondary)
             }
@@ -210,44 +225,60 @@ struct PlanUsageBanner: View {
 
     @ViewBuilder
     private func extraUsageBanner(window: UsageWindow) -> some View {
-        if let reason = window.overageDisabledReason {
-            if reason == "out_of_credits" {
-                HStack(spacing: 6) {
-                    Image(systemName: "creditcard.trianglebadge.exclamationmark")
-                        .font(.caption)
-                        .foregroundStyle(.orange)
-                    Text("Extra Usage aufgebraucht")
-                        .font(.caption2.weight(.medium))
-                        .foregroundStyle(.orange)
-                }
-                .padding(.horizontal, 8)
-                .padding(.vertical, 4)
-                .background(.orange.opacity(0.1), in: RoundedRectangle(cornerRadius: 6))
-            } else if reason == "org_level_disabled" {
-                HStack(spacing: 6) {
-                    Image(systemName: "info.circle")
+        let hasOverageInfo = window.overageDisabledReason != nil || window.overageInUse
+
+        if hasOverageInfo {
+            Divider()
+
+            VStack(alignment: .leading, spacing: 6) {
+                HStack {
+                    Image(systemName: "creditcard")
                         .font(.caption)
                         .foregroundStyle(.secondary)
-                    Text("Extra Usage nicht aktiviert")
-                        .font(.caption2)
-                        .foregroundStyle(.secondary)
+                    Text("Zusätzliche Nutzung")
+                        .font(.caption.weight(.semibold))
                 }
-                .padding(.horizontal, 8)
-                .padding(.vertical, 4)
-                .background(.secondary.opacity(0.1), in: RoundedRectangle(cornerRadius: 6))
+
+                if let reason = window.overageDisabledReason {
+                    if reason == "out_of_credits" {
+                        HStack(spacing: 6) {
+                            Image(systemName: "exclamationmark.triangle.fill")
+                                .font(.caption2)
+                                .foregroundStyle(.orange)
+                            Text("Guthaben aufgebraucht")
+                                .font(.caption2.weight(.medium))
+                                .foregroundStyle(.orange)
+                        }
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 4)
+                        .background(.orange.opacity(0.1), in: RoundedRectangle(cornerRadius: 6))
+                    } else if reason == "org_level_disabled" {
+                        HStack(spacing: 6) {
+                            Image(systemName: "xmark.circle")
+                                .font(.caption2)
+                                .foregroundStyle(.secondary)
+                            Text("Nicht aktiviert")
+                                .font(.caption2)
+                                .foregroundStyle(.secondary)
+                        }
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 4)
+                        .background(.secondary.opacity(0.1), in: RoundedRectangle(cornerRadius: 6))
+                    }
+                } else if window.overageInUse {
+                    HStack(spacing: 6) {
+                        Image(systemName: "bolt.circle.fill")
+                            .font(.caption2)
+                            .foregroundStyle(.blue)
+                        Text("Extra Usage aktiv — Guthaben wird verwendet")
+                            .font(.caption2.weight(.medium))
+                            .foregroundStyle(.blue)
+                    }
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 4)
+                    .background(.blue.opacity(0.1), in: RoundedRectangle(cornerRadius: 6))
+                }
             }
-        } else if window.overageInUse {
-            HStack(spacing: 6) {
-                Image(systemName: "bolt.circle")
-                    .font(.caption)
-                    .foregroundStyle(.blue)
-                Text("Extra Usage aktiv")
-                    .font(.caption2.weight(.medium))
-                    .foregroundStyle(.blue)
-            }
-            .padding(.horizontal, 8)
-            .padding(.vertical, 4)
-            .background(.blue.opacity(0.1), in: RoundedRectangle(cornerRadius: 6))
         }
     }
 }
@@ -321,7 +352,7 @@ struct CurrentSessionBanner: View {
             }
 
             // Activity indicator
-            Text("Letzte Aktivitaet: \(session.lastActivityAt, style: .relative) zurueck")
+            Text("Letzte Aktivität: \(session.lastActivityAt, style: .relative) zurück")
                 .font(.system(size: 9))
                 .foregroundStyle(.tertiary)
         }
@@ -508,7 +539,7 @@ struct DashboardView: View {
                     Image(systemName: "dollarsign.circle")
                         .font(.caption2)
                         .foregroundStyle(.secondary)
-                    Text("Geschaetzter API-Wert: $\(String(format: "%.2f", estimatedCost))")
+                    Text("Geschätzter API-Wert: $\(String(format: "%.2f", estimatedCost))")
                         .font(.caption2)
                         .foregroundStyle(.secondary)
                     Spacer()
@@ -575,6 +606,7 @@ struct DashboardView: View {
             .padding(16)
         }
         .frame(width: 400, height: 500)
+        .environment(\.locale, Locale(identifier: "de_DE"))
     }
 }
 

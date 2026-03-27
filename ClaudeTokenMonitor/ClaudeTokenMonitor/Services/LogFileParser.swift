@@ -39,7 +39,7 @@ final class LogFileParser: ObservableObject {
         let df = DateFormatter()
         df.dateFormat = "yyyy-MM-dd HH:mm:ss"
         df.locale = Locale(identifier: "en_US_POSIX")
-        df.timeZone = TimeZone(identifier: "UTC")
+        df.timeZone = .current  // Log timestamps are in local time
         return df
     }()
 

@@ -87,39 +87,118 @@ final class UsageWindowTracker: ObservableObject {
     func evaluate() {
         let now = Date()
 
-        // Check if we have fresh authoritative log data
-        if let logInfo = logFileParser?.latestInfo,
-           now.timeIntervalSince(logInfo.timestamp) < logDataFreshnessInterval {
-            // Use authoritative log data
-            evaluateFromLogData(logInfo, now: now)
-            return
+        // Strategy: combine data from BOTH sources
+        // 1. Desktop log gives: exact utilization %, 7d window, overage status
+        // 2. JSONL session data gives: most recent rate limit message with reset time
+        // The JSONL data is often MORE recent (Claude Code runs update it live)
+
+        let logInfo = logFileParser?.latestInfo
+        let logIsFresh = logInfo.map { now.timeIntervalSince($0.timestamp) < logDataFreshnessInterval } ?? false
+
+        // Get the most recent rate limit from JSONL sessions
+        let sessionResetInfo = findLatestSessionRateLimit(now: now)
+
+        if logIsFresh, let logInfo {
+            // We have log data — use it as base, but override reset time from JSONL if newer
+            evaluateFromLogData(logInfo, sessionResetInfo: sessionResetInfo, now: now)
+        } else if let sessionResetInfo {
+            // No fresh log data, but we have JSONL rate limit info
+            // Still use log data for 7d/overage if available (even if "stale")
+            evaluateFromSessionRateLimit(sessionResetInfo, logInfo: logInfo, now: now)
+        } else {
+            // Fall back to token-based estimation
+            evaluateFromTokens(now: now)
+        }
+    }
+
+    /// Find the most recent rate limit message from JSONL sessions
+    private func findLatestSessionRateLimit(now: Date) -> (resetTime: Date, message: String, timestamp: Date)? {
+        guard let modelContext else { return nil }
+
+        let descriptor = FetchDescriptor<Session>(
+            sortBy: [SortDescriptor(\.lastActivityAt, order: .reverse)]
+        )
+        let sessions = (try? modelContext.fetch(descriptor)) ?? []
+
+        // Find the most recent rate limit message across all sessions
+        var latestMsg: String?
+        var latestTimestamp: Date?
+
+        for session in sessions {
+            if let msg = session.lastRateLimitMessage {
+                // Check token records for the timestamp of the rate limit
+                let rateLimitRecords = session.tokenRecords
+                    .filter { $0.isRateLimited }
+                    .sorted { $0.timestamp > $1.timestamp }
+
+                if let latestRecord = rateLimitRecords.first {
+                    if latestTimestamp == nil || latestRecord.timestamp > latestTimestamp! {
+                        latestMsg = msg
+                        latestTimestamp = latestRecord.timestamp
+                    }
+                }
+            }
         }
 
-        // Fall back to token-based estimation
-        evaluateFromTokens(now: now)
+        guard let msg = latestMsg, let ts = latestTimestamp else { return nil }
+        guard let resetTime = parseResetTime(from: msg, relativeTo: ts) else { return nil }
+        // Only return if reset is still in the future
+        guard resetTime > now else { return nil }
+        return (resetTime: resetTime, message: msg, timestamp: ts)
     }
 
     // MARK: - Log-based evaluation
 
-    private func evaluateFromLogData(_ logInfo: RateLimitInfo, now: Date) {
+    private func evaluateFromLogData(_ logInfo: RateLimitInfo, sessionResetInfo: (resetTime: Date, message: String, timestamp: Date)?, now: Date) {
         let fiveHour = logInfo.fiveHourWindow
         let sevenDay = logInfo.sevenDayWindow
 
-        // Determine if we're currently limited in the 5h window
-        let isLimited = fiveHour.status == "exceeded_limit" && now < fiveHour.resetsAt
+        // Use the MOST RECENT reset time: compare log vs JSONL
+        let effectiveResetTime: Date
+        if let sessionInfo = sessionResetInfo, sessionInfo.timestamp > logInfo.timestamp {
+            // JSONL has newer data
+            effectiveResetTime = sessionInfo.resetTime
+        } else {
+            effectiveResetTime = fiveHour.resetsAt
+        }
 
-        // Get token-based legacy fields (best effort, may be nil)
+        let isLimited = now < effectiveResetTime
+
         let tokenWindow = buildTokenWindow(now: now)
 
         currentWindow = UsageWindow(
-            fiveHourUtilization: fiveHour.utilization,
-            fiveHourResetTime: fiveHour.resetsAt,
-            fiveHourStatus: fiveHour.status,
+            fiveHourUtilization: isLimited ? max(fiveHour.utilization, 1.0) : fiveHour.utilization,
+            fiveHourResetTime: effectiveResetTime,
+            fiveHourStatus: isLimited ? "exceeded_limit" : fiveHour.status,
             sevenDayUtilization: sevenDay.utilization,
             sevenDayResetTime: sevenDay.resetsAt,
             sevenDayStatus: sevenDay.status,
             overageDisabledReason: logInfo.overageDisabledReason,
             overageInUse: logInfo.overageInUse,
+            tokensUsed: tokenWindow?.tokensUsed ?? 0,
+            learnedLimit: tokenWindow?.learnedLimit,
+            isLimited: isLimited
+        )
+    }
+
+    /// Evaluate using JSONL rate limit data, enriched with desktop log for 7d/overage
+    private func evaluateFromSessionRateLimit(_ info: (resetTime: Date, message: String, timestamp: Date), logInfo: RateLimitInfo?, now: Date) {
+        let isLimited = now < info.resetTime
+        let tokenWindow = buildTokenWindow(now: now)
+
+        // Use desktop log for 7d window and overage even if the 5h reset is stale
+        let sevenDay = logInfo?.sevenDayWindow
+        let overage = logInfo
+
+        currentWindow = UsageWindow(
+            fiveHourUtilization: isLimited ? 1.0 : nil,
+            fiveHourResetTime: info.resetTime,
+            fiveHourStatus: isLimited ? "exceeded_limit" : "within_limit",
+            sevenDayUtilization: sevenDay?.utilization,
+            sevenDayResetTime: sevenDay?.resetsAt,
+            sevenDayStatus: sevenDay?.status,
+            overageDisabledReason: overage?.overageDisabledReason,
+            overageInUse: overage?.overageInUse ?? false,
             tokensUsed: tokenWindow?.tokensUsed ?? 0,
             learnedLimit: tokenWindow?.learnedLimit,
             isLimited: isLimited
