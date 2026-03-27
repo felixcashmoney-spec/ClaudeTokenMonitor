@@ -1,7 +1,8 @@
 import Foundation
-import Security
-import CommonCrypto
-import SQLite3
+import WebKit
+import os.log
+
+private let logger = Logger(subsystem: "com.claudetokenmonitor", category: "ClaudeAPIClient")
 
 // MARK: - API Response Models
 
@@ -48,41 +49,168 @@ struct ClaudeAPIData {
     let fetchedAt: Date
 }
 
-// MARK: - ClaudeAPIClient
+// MARK: - ClaudeAPIClient (WKWebView-based)
 
 @MainActor
-final class ClaudeAPIClient: ObservableObject {
+final class ClaudeAPIClient: NSObject, ObservableObject, WKNavigationDelegate {
     @Published var latestData: ClaudeAPIData?
+    @Published var isLoggedIn: Bool = false
+    @Published var needsLogin: Bool = false
 
-    private let baseURL = "https://claude.ai"
-    private let cookieDBPath: String = {
-        let home = FileManager.default.homeDirectoryForCurrentUser.path
-        return "\(home)/Library/Application Support/Claude/Cookies"
-    }()
+    private var webView: WKWebView?
+    private var loginWindow: NSWindow?
+    private var loginWebView: WKWebView?
+    private var pendingContinuation: CheckedContinuation<Void, Never>?
+    private var navigationContinuation: CheckedContinuation<Void, Never>?
 
-    // Cookie cache — invalidate after 5 minutes
-    private var cachedCookies: [String: String]?
-    private var cookieCacheTime: Date?
-    private let cookieCacheTTL: TimeInterval = 5 * 60
+    // Shared data store so login session persists across app launches
+    private static let dataStore: WKWebsiteDataStore = .default()
+
+    override init() {
+        super.init()
+        setupWebView()
+    }
+
+    private func setupWebView() {
+        let config = WKWebViewConfiguration()
+        config.websiteDataStore = Self.dataStore
+        let wv = WKWebView(frame: .zero, configuration: config)
+        wv.navigationDelegate = self
+        webView = wv
+    }
 
     // MARK: - Public API
 
     func fetchAll() async {
-        guard let cookies = loadCookies() else {
-            print("[ClaudeAPIClient] Could not load cookies, skipping fetch")
+        guard let webView else {
+            logger.info("No WebView available")
             return
         }
 
-        guard let orgId = cookies["lastActiveOrg"], !orgId.isEmpty else {
-            print("[ClaudeAPIClient] No orgId found in cookies")
+        // Make sure we're on claude.ai domain first
+        if webView.url?.host != "claude.ai" {
+            logger.info("Navigating to claude.ai...")
+            await loadAndWait(webView: webView, url: URL(string: "https://claude.ai/settings/usage")!)
+        }
+
+        let currentURL = webView.url?.absoluteString ?? ""
+        let currentPath = webView.url?.path ?? ""
+        logger.info("Page loaded, path contains 'login': \(currentPath.contains("login"))")
+
+        // Check if we got redirected to login
+        if currentPath.contains("login") || currentPath.contains("oauth") || currentURL.contains("login") {
+            logger.info("Redirected to login page — showing login window")
+            needsLogin = true
+            isLoggedIn = false
+            await showLoginWindow()
+            // After login, retry
+            await loadAndWait(webView: webView, url: URL(string: "https://claude.ai/settings/usage")!)
+        }
+
+        isLoggedIn = true
+        needsLogin = false
+
+        // Get orgId from cookie (simple sync JS, no fetch needed)
+        let cookieJS = "document.cookie.split(';').map(c => c.trim()).find(c => c.startsWith('lastActiveOrg='))?.split('=')?.[1] || ''"
+        let orgId: String?
+        do {
+            orgId = try await webView.evaluateJavaScript(cookieJS) as? String
+            logger.info("orgId from cookie: \(orgId ?? "nil")")
+        } catch {
+            logger.info("Cookie JS error: \(error.localizedDescription)")
+            orgId = nil
+        }
+
+        guard let orgId, !orgId.isEmpty else {
+            // Try extracting from page content instead
+            let pageOrgJS = """
+            (() => {
+                const scripts = document.querySelectorAll('script');
+                for (const s of scripts) {
+                    const match = s.textContent.match(/"organization":\\s*\\{[^}]*"uuid":\\s*"([^"]+)"/);
+                    if (match) return match[1];
+                }
+                // Try meta or data attributes
+                const el = document.querySelector('[data-org-id]');
+                if (el) return el.dataset.orgId;
+                return '';
+            })()
+            """
+            let fallbackOrgId = try? await webView.evaluateJavaScript(pageOrgJS) as? String
+            guard let fallbackOrgId, !fallbackOrgId.isEmpty else {
+                logger.info("Could not determine orgId from any source")
+                return
+            }
+            logger.info("orgId from page scan: \(fallbackOrgId)")
+            await fetchAPIData(webView: webView, orgId: fallbackOrgId)
             return
         }
 
-        async let usageFetch = fetchUsage(orgId: orgId, cookies: cookies)
-        async let creditsFetch = fetchPrepaidCredits(orgId: orgId, cookies: cookies)
-        async let overageFetch = fetchOverageSpend(orgId: orgId, cookies: cookies)
+        await fetchAPIData(webView: webView, orgId: orgId)
+    }
 
-        let (usage, credits, overage) = await (usageFetch, creditsFetch, overageFetch)
+    private func fetchAPIData(webView: WKWebView, orgId: String) async {
+        logger.info("Fetching data for org: \(orgId)")
+
+        // Fetch all endpoints via async JS fetch (uses WKWebView's cookies)
+        let fetchJS = """
+        const orgId = orgIdParam;
+        const results = {};
+        const endpoints = {
+            usage: `/api/organizations/${orgId}/usage`,
+            credits: `/api/organizations/${orgId}/prepaid/credits`,
+            overage: `/api/organizations/${orgId}/overage_spend_limit`
+        };
+        for (const [key, url] of Object.entries(endpoints)) {
+            try {
+                const resp = await fetch(url);
+                if (resp.ok) {
+                    results[key] = await resp.json();
+                } else {
+                    results[key] = null;
+                }
+            } catch (e) {
+                results[key] = null;
+            }
+        }
+        return JSON.stringify(results);
+        """
+
+        let resultStr: String?
+        do {
+            let result = try await webView.callAsyncJavaScript(fetchJS, arguments: ["orgIdParam": orgId], contentWorld: .page)
+            resultStr = result as? String
+        } catch {
+            logger.info("JS fetch error: \(error.localizedDescription)")
+            resultStr = nil
+        }
+
+        guard let resultStr, let resultData = resultStr.data(using: .utf8) else {
+            logger.info("JS fetch returned no data")
+            return
+        }
+
+        let decoder = JSONDecoder()
+
+        // Parse each response
+        var usage: UsageResponse?
+        var credits: PrepaidCreditsResponse?
+        var overage: OverageSpendResponse?
+
+        if let json = try? JSONSerialization.jsonObject(with: resultData) as? [String: Any] {
+            if let usageJSON = json["usage"], !(usageJSON is NSNull),
+               let usageData = try? JSONSerialization.data(withJSONObject: usageJSON) {
+                usage = try? decoder.decode(UsageResponse.self, from: usageData)
+            }
+            if let creditsJSON = json["credits"], !(creditsJSON is NSNull),
+               let creditsData = try? JSONSerialization.data(withJSONObject: creditsJSON) {
+                credits = try? decoder.decode(PrepaidCreditsResponse.self, from: creditsData)
+            }
+            if let overageJSON = json["overage"], !(overageJSON is NSNull),
+               let overageData = try? JSONSerialization.data(withJSONObject: overageJSON) {
+                overage = try? decoder.decode(OverageSpendResponse.self, from: overageData)
+            }
+        }
 
         latestData = ClaudeAPIData(
             usage: usage,
@@ -90,247 +218,107 @@ final class ClaudeAPIClient: ObservableObject {
             overage: overage,
             fetchedAt: Date()
         )
-    }
 
-    // MARK: - Individual Endpoint Fetches
-
-    private func fetchUsage(orgId: String, cookies: [String: String]) async -> UsageResponse? {
-        let urlString = "\(baseURL)/api/organizations/\(orgId)/usage"
-        return await fetchEndpoint(urlString: urlString, cookies: cookies)
-    }
-
-    private func fetchPrepaidCredits(orgId: String, cookies: [String: String]) async -> PrepaidCreditsResponse? {
-        let urlString = "\(baseURL)/api/organizations/\(orgId)/prepaid/credits"
-        return await fetchEndpoint(urlString: urlString, cookies: cookies)
-    }
-
-    private func fetchOverageSpend(orgId: String, cookies: [String: String]) async -> OverageSpendResponse? {
-        let urlString = "\(baseURL)/api/organizations/\(orgId)/overage_spend_limit"
-        return await fetchEndpoint(urlString: urlString, cookies: cookies)
-    }
-
-    private func fetchEndpoint<T: Decodable>(urlString: String, cookies: [String: String]) async -> T? {
-        guard let url = URL(string: urlString) else {
-            print("[ClaudeAPIClient] Invalid URL: \(urlString)")
-            return nil
+        logger.info("Fetch complete: usage=\(usage != nil), credits=\(credits != nil), overage=\(overage != nil)")
+        if let credits {
+            logger.info("Credit balance: \(credits.amount) cents (\(credits.currency))")
         }
-
-        var request = URLRequest(url: url)
-        request.httpMethod = "GET"
-        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        request.setValue("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 Safari/537.36", forHTTPHeaderField: "User-Agent")
-
-        // Build cookie header
-        var cookieParts: [String] = []
-        if let sessionKey = cookies["sessionKey"] {
-            cookieParts.append("sessionKey=\(sessionKey)")
-        }
-        if let cfClearance = cookies["cf_clearance"] {
-            cookieParts.append("cf_clearance=\(cfClearance)")
-        }
-        if !cookieParts.isEmpty {
-            request.setValue(cookieParts.joined(separator: "; "), forHTTPHeaderField: "Cookie")
-        }
-
-        do {
-            let (data, response) = try await URLSession.shared.data(for: request)
-
-            if let httpResponse = response as? HTTPURLResponse {
-                guard httpResponse.statusCode == 200 else {
-                    print("[ClaudeAPIClient] HTTP \(httpResponse.statusCode) for \(urlString)")
-                    return nil
-                }
-            }
-
-            let decoded = try JSONDecoder().decode(T.self, from: data)
-            return decoded
-        } catch {
-            print("[ClaudeAPIClient] Fetch error for \(urlString): \(error)")
-            return nil
+        if let usage {
+            logger.info("5h: \(usage.five_hour.utilization)%, 7d: \(usage.seven_day.utilization)%, extra spent: \(usage.extra_usage.used_credits)c")
         }
     }
 
-    // MARK: - Cookie Loading
+    // MARK: - Login Window
 
-    private func loadCookies() -> [String: String]? {
-        // Return cached cookies if still fresh
-        if let cached = cachedCookies,
-           let cacheTime = cookieCacheTime,
-           Date().timeIntervalSince(cacheTime) < cookieCacheTTL {
-            return cached
-        }
+    private func showLoginWindow() async {
+        if loginWindow != nil { return }
 
-        guard let aesKey = deriveAESKeyFromKeychain() else {
-            print("[ClaudeAPIClient] Could not derive AES key from Keychain")
-            return nil
-        }
+        let config = WKWebViewConfiguration()
+        config.websiteDataStore = Self.dataStore
+        let lwv = WKWebView(frame: NSRect(x: 0, y: 0, width: 500, height: 600), configuration: config)
+        loginWebView = lwv
+        lwv.navigationDelegate = self
 
-        guard let cookies = readCookiesFromSQLite(aesKey: aesKey) else {
-            print("[ClaudeAPIClient] Could not read cookies from SQLite")
-            return nil
-        }
-
-        cachedCookies = cookies
-        cookieCacheTime = Date()
-        return cookies
-    }
-
-    // MARK: - Keychain + PBKDF2
-
-    private func deriveAESKeyFromKeychain() -> [UInt8]? {
-        // Query Keychain for "Claude Safe Storage" password
-        let query: [CFString: Any] = [
-            kSecClass: kSecClassGenericPassword,
-            kSecAttrService: "Claude Safe Storage",
-            kSecAttrAccount: "Claude",
-            kSecReturnData: true,
-            kSecMatchLimit: kSecMatchLimitOne
-        ]
-
-        var result: CFTypeRef?
-        let status = SecItemCopyMatching(query as CFDictionary, &result)
-
-        guard status == errSecSuccess else {
-            print("[ClaudeAPIClient] Keychain query failed: \(status)")
-            return nil
-        }
-
-        guard let passwordData = result as? Data,
-              let passwordString = String(data: passwordData, encoding: .utf8) else {
-            print("[ClaudeAPIClient] Could not decode Keychain password")
-            return nil
-        }
-
-        // PBKDF2-SHA1: password=keychainPassword, salt="saltysalt", iterations=1003, keyLen=16
-        let salt = Array("saltysalt".utf8)
-        let password = Array(passwordString.utf8)
-        var derivedKey = [UInt8](repeating: 0, count: 16)
-
-        let pbkdfResult = CCKeyDerivationPBKDF(
-            CCPBKDFAlgorithm(kCCPBKDF2),
-            password,
-            password.count,
-            salt,
-            salt.count,
-            CCPseudoRandomAlgorithm(kCCPRFHmacAlgSHA1),
-            1003,
-            &derivedKey,
-            derivedKey.count
+        let window = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 500, height: 600),
+            styleMask: [.titled, .closable, .resizable],
+            backing: .buffered,
+            defer: false
         )
+        window.title = "Bei Claude anmelden"
+        window.contentView = lwv
+        window.center()
+        window.makeKeyAndOrderFront(nil)
+        loginWindow = window
 
-        guard pbkdfResult == kCCSuccess else {
-            print("[ClaudeAPIClient] PBKDF2 derivation failed: \(pbkdfResult)")
-            return nil
+        lwv.load(URLRequest(url: URL(string: "https://claude.ai/login")!))
+
+        // Wait until login completes (detected by navigation to claude.ai main page)
+        await withCheckedContinuation { continuation in
+            pendingContinuation = continuation
         }
 
-        return derivedKey
+        // Login done — close window and retry fetch
+        loginWindow?.close()
+        loginWindow = nil
+        loginWebView = nil
+        needsLogin = false
+        isLoggedIn = true
     }
 
-    // MARK: - Cookie Decryption (AES-128-CBC)
-
-    private func decryptCookieValue(_ encryptedData: Data, aesKey: [UInt8]) -> String? {
-        // encrypted_value has "v10" prefix (3 bytes to skip)
-        guard encryptedData.count > 3 else { return nil }
-
-        let ciphertext = encryptedData.dropFirst(3)
-        guard ciphertext.count > 0 else { return nil }
-
-        // IV = 16 bytes of 0x20 (space character)
-        let iv = [UInt8](repeating: 0x20, count: 16)
-        let ciphertextBytes = Array(ciphertext)
-
-        var outputBuffer = [UInt8](repeating: 0, count: ciphertextBytes.count + kCCBlockSizeAES128)
-        var outputLength = 0
-
-        let cryptStatus = CCCrypt(
-            CCOperation(kCCDecrypt),
-            CCAlgorithm(kCCAlgorithmAES128),
-            CCOptions(kCCOptionPKCS7Padding),
-            aesKey,
-            kCCKeySizeAES128,
-            iv,
-            ciphertextBytes,
-            ciphertextBytes.count,
-            &outputBuffer,
-            outputBuffer.count,
-            &outputLength
-        )
-
-        guard cryptStatus == kCCSuccess else {
-            print("[ClaudeAPIClient] AES decryption failed: \(cryptStatus)")
-            return nil
-        }
-
-        let decryptedBytes = Array(outputBuffer[0..<outputLength])
-        return String(bytes: decryptedBytes, encoding: .utf8)
+    private func navigateAndWaitForLogin() async {
+        guard let webView else { return }
+        await loadAndWait(webView: webView, url: URL(string: "https://claude.ai/settings/usage")!)
     }
 
-    // MARK: - SQLite Cookie Reading
-
-    private func readCookiesFromSQLite(aesKey: [UInt8]) -> [String: String]? {
-        guard FileManager.default.fileExists(atPath: cookieDBPath) else {
-            print("[ClaudeAPIClient] Cookie DB not found at: \(cookieDBPath)")
-            return nil
+    /// Load a URL in a webView and wait for navigation to finish
+    private func loadAndWait(webView: WKWebView, url: URL) async {
+        await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+            self.navigationContinuation = continuation
+            webView.load(URLRequest(url: url))
         }
+        // Extra buffer for JS framework to initialize
+        try? await Task.sleep(for: .seconds(1))
+    }
 
-        var db: OpaquePointer?
-        // Use read-only immutable mode to avoid locking issues
-        let flags = SQLITE_OPEN_READONLY | SQLITE_OPEN_NOMUTEX
-        guard sqlite3_open_v2(cookieDBPath, &db, flags, nil) == SQLITE_OK else {
-            print("[ClaudeAPIClient] Could not open Cookie DB: \(String(cString: sqlite3_errmsg(db)))")
-            sqlite3_close(db)
-            return nil
-        }
-        defer { sqlite3_close(db) }
+    // MARK: - WKNavigationDelegate
 
-        let query = "SELECT name, encrypted_value, value FROM cookies WHERE host_key LIKE '%claude.ai%'"
-        var statement: OpaquePointer?
+    nonisolated func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
+        Task { @MainActor in
+            guard let url = webView.url else { return }
+            logger.info("Page loaded: \(url.absoluteString)")
 
-        guard sqlite3_prepare_v2(db, query, -1, &statement, nil) == SQLITE_OK else {
-            print("[ClaudeAPIClient] Could not prepare SQL statement: \(String(cString: sqlite3_errmsg(db)))")
-            return nil
-        }
-        defer { sqlite3_finalize(statement) }
-
-        var cookies: [String: String] = [:]
-        let targetCookies: Set<String> = ["sessionKey", "cf_clearance", "lastActiveOrg"]
-
-        while sqlite3_step(statement) == SQLITE_ROW {
-            guard let namePtr = sqlite3_column_text(statement, 0) else { continue }
-            let name = String(cString: namePtr)
-
-            guard targetCookies.contains(name) else { continue }
-
-            // Check the plain text value column first (some cookies aren't encrypted)
-            var plainValue: String? = nil
-            if let valuePtr = sqlite3_column_text(statement, 2) {
-                let valueStr = String(cString: valuePtr)
-                if !valueStr.isEmpty {
-                    plainValue = valueStr
+            // Main webView navigation completed
+            if webView === self.webView {
+                if let continuation = self.navigationContinuation {
+                    self.navigationContinuation = nil
+                    continuation.resume()
                 }
             }
 
-            if let plain = plainValue {
-                cookies[name] = plain
-                continue
-            }
-
-            // Try decrypting encrypted_value
-            let encryptedLength = sqlite3_column_bytes(statement, 1)
-            if encryptedLength > 0,
-               let encryptedPtr = sqlite3_column_blob(statement, 1) {
-                let encryptedData = Data(bytes: encryptedPtr, count: Int(encryptedLength))
-                if let decrypted = decryptCookieValue(encryptedData, aesKey: aesKey) {
-                    cookies[name] = decrypted
+            // If the login webView navigated to a non-login page, login is complete
+            if webView === self.loginWebView,
+               url.host == "claude.ai",
+               !url.path.contains("login"),
+               !url.path.contains("oauth") {
+                logger.info("Login completed!")
+                if let continuation = self.pendingContinuation {
+                    self.pendingContinuation = nil
+                    continuation.resume()
                 }
             }
         }
+    }
 
-        if cookies.isEmpty {
-            print("[ClaudeAPIClient] No Claude.ai cookies found in DB")
-            return nil
+    nonisolated func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: Error) {
+        Task { @MainActor in
+            logger.info("Navigation failed: \(error.localizedDescription)")
+            if webView === self.webView {
+                if let continuation = self.navigationContinuation {
+                    self.navigationContinuation = nil
+                    continuation.resume()
+                }
+            }
         }
-
-        return cookies
     }
 }

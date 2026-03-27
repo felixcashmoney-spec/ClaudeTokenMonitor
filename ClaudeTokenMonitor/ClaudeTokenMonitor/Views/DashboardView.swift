@@ -108,11 +108,8 @@ struct PlanUsageBanner: View {
                     )
                 }
 
-                // Extra usage status banner
-                extraUsageBanner(window: window)
-
-                // Credit & Spending section (only shown when API data available)
-                creditSpendingBanner(window: window)
+                // Extra usage + credit section (API data preferred, falls back to log data)
+                extraUsageSection(window: window)
 
                 // Footer
                 if window.fiveHourUtilization != nil {
@@ -235,63 +232,11 @@ struct PlanUsageBanner: View {
     }
 
     @ViewBuilder
-    private func creditSpendingBanner(window: UsageWindow) -> some View {
-        if let balance = window.creditBalanceCents {
-            Divider()
-            VStack(alignment: .leading, spacing: 6) {
-                HStack {
-                    Image(systemName: "eurosign.circle")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                    Text("Guthaben & Ausgaben")
-                        .font(.caption.weight(.semibold))
-                }
+    private func extraUsageSection(window: UsageWindow) -> some View {
+        let hasAPIData = window.creditBalanceCents != nil || window.extraUsageEnabled != nil
+        let hasLogData = window.overageDisabledReason != nil || window.overageInUse
 
-                HStack {
-                    Text("Prepaid-Guthaben:")
-                        .font(.caption2)
-                    Spacer()
-                    Text(formatEUR(cents: balance))
-                        .font(.caption2.weight(.semibold).monospacedDigit())
-                        .foregroundStyle(.green)
-                }
-
-                if let spent = window.extraUsageSpentCents, window.extraUsageEnabled == true {
-                    HStack {
-                        Text("Extra Usage ausgegeben:")
-                            .font(.caption2)
-                        Spacer()
-                        Text(formatEUR(cents: spent))
-                            .font(.caption2.weight(.semibold).monospacedDigit())
-                            .foregroundStyle(spent > 0 ? .orange : .secondary)
-                    }
-                    if let limit = window.extraUsageMonthlyLimitCents {
-                        HStack {
-                            Text("Monatliches Limit:")
-                                .font(.caption2)
-                                .foregroundStyle(.secondary)
-                            Spacer()
-                            Text(formatEUR(cents: limit))
-                                .font(.caption2.monospacedDigit())
-                                .foregroundStyle(.secondary)
-                        }
-                    }
-                }
-
-                if let freshness = window.apiDataFreshness {
-                    Text("Aktualisiert: \(freshness, style: .relative) zurueck")
-                        .font(.system(size: 9))
-                        .foregroundStyle(.tertiary)
-                }
-            }
-        }
-    }
-
-    @ViewBuilder
-    private func extraUsageBanner(window: UsageWindow) -> some View {
-        let hasOverageInfo = window.overageDisabledReason != nil || window.overageInUse
-
-        if hasOverageInfo {
+        if hasAPIData || hasLogData {
             Divider()
 
             VStack(alignment: .leading, spacing: 6) {
@@ -303,20 +248,51 @@ struct PlanUsageBanner: View {
                         .font(.caption.weight(.semibold))
                 }
 
-                if let reason = window.overageDisabledReason {
-                    if reason == "out_of_credits" {
-                        HStack(spacing: 6) {
-                            Image(systemName: "exclamationmark.triangle.fill")
+                if hasAPIData {
+                    // API data available — show detailed credit info
+                    if let balance = window.creditBalanceCents {
+                        HStack {
+                            Text("Guthaben:")
                                 .font(.caption2)
-                                .foregroundStyle(.orange)
-                            Text("Guthaben aufgebraucht")
-                                .font(.caption2.weight(.medium))
-                                .foregroundStyle(.orange)
+                            Spacer()
+                            Text(formatEUR(cents: balance))
+                                .font(.caption2.weight(.semibold).monospacedDigit())
+                                .foregroundStyle(balance > 0 ? .green : .red)
                         }
-                        .padding(.horizontal, 8)
-                        .padding(.vertical, 4)
-                        .background(.orange.opacity(0.1), in: RoundedRectangle(cornerRadius: 6))
-                    } else if reason == "org_level_disabled" {
+                    }
+
+                    if let spent = window.extraUsageSpentCents, window.extraUsageEnabled == true {
+                        HStack {
+                            Text("Ausgegeben:")
+                                .font(.caption2)
+                            Spacer()
+                            Text(formatEUR(cents: spent))
+                                .font(.caption2.weight(.semibold).monospacedDigit())
+                                .foregroundStyle(spent > 0 ? .orange : .secondary)
+                        }
+
+                        if let limit = window.extraUsageMonthlyLimitCents {
+                            HStack {
+                                Text("Monatslimit:")
+                                    .font(.caption2)
+                                    .foregroundStyle(.secondary)
+                                Spacer()
+                                Text(formatEUR(cents: limit))
+                                    .font(.caption2.monospacedDigit())
+                                    .foregroundStyle(.secondary)
+                            }
+                        } else {
+                            HStack {
+                                Text("Monatslimit:")
+                                    .font(.caption2)
+                                    .foregroundStyle(.secondary)
+                                Spacer()
+                                Text("Unbegrenzt")
+                                    .font(.caption2)
+                                    .foregroundStyle(.secondary)
+                            }
+                        }
+                    } else if window.extraUsageEnabled == false {
                         HStack(spacing: 6) {
                             Image(systemName: "xmark.circle")
                                 .font(.caption2)
@@ -329,18 +305,53 @@ struct PlanUsageBanner: View {
                         .padding(.vertical, 4)
                         .background(.secondary.opacity(0.1), in: RoundedRectangle(cornerRadius: 6))
                     }
-                } else if window.overageInUse {
-                    HStack(spacing: 6) {
-                        Image(systemName: "bolt.circle.fill")
-                            .font(.caption2)
-                            .foregroundStyle(.blue)
-                        Text("Extra Usage aktiv — Guthaben wird verwendet")
-                            .font(.caption2.weight(.medium))
-                            .foregroundStyle(.blue)
+
+                    if let freshness = window.apiDataFreshness {
+                        Text("Aktualisiert: \(freshness, style: .relative) zurück")
+                            .font(.system(size: 9))
+                            .foregroundStyle(.tertiary)
                     }
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 4)
-                    .background(.blue.opacity(0.1), in: RoundedRectangle(cornerRadius: 6))
+                } else {
+                    // Fallback: log-based overage info only
+                    if let reason = window.overageDisabledReason {
+                        if reason == "out_of_credits" {
+                            HStack(spacing: 6) {
+                                Image(systemName: "exclamationmark.triangle.fill")
+                                    .font(.caption2)
+                                    .foregroundStyle(.orange)
+                                Text("Guthaben aufgebraucht")
+                                    .font(.caption2.weight(.medium))
+                                    .foregroundStyle(.orange)
+                            }
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 4)
+                            .background(.orange.opacity(0.1), in: RoundedRectangle(cornerRadius: 6))
+                        } else if reason == "org_level_disabled" {
+                            HStack(spacing: 6) {
+                                Image(systemName: "xmark.circle")
+                                    .font(.caption2)
+                                    .foregroundStyle(.secondary)
+                                Text("Nicht aktiviert")
+                                    .font(.caption2)
+                                    .foregroundStyle(.secondary)
+                            }
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 4)
+                            .background(.secondary.opacity(0.1), in: RoundedRectangle(cornerRadius: 6))
+                        }
+                    } else if window.overageInUse {
+                        HStack(spacing: 6) {
+                            Image(systemName: "bolt.circle.fill")
+                                .font(.caption2)
+                                .foregroundStyle(.blue)
+                            Text("Extra Usage aktiv")
+                                .font(.caption2.weight(.medium))
+                                .foregroundStyle(.blue)
+                        }
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 4)
+                        .background(.blue.opacity(0.1), in: RoundedRectangle(cornerRadius: 6))
+                    }
                 }
             }
         }

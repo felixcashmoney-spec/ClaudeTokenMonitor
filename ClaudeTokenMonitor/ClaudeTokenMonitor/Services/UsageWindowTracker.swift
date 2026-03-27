@@ -1,6 +1,9 @@
 import Foundation
 import SwiftData
 import Combine
+import os.log
+
+private let trackerLog = Logger(subsystem: "com.claudetokenmonitor", category: "UsageWindowTracker")
 
 struct UsageWindow {
     // 5h window (authoritative from log, or estimated from tokens)
@@ -88,10 +91,14 @@ final class UsageWindowTracker: ObservableObject {
         // Start API polling every 60 seconds
         let client = ClaudeAPIClient()
         apiClient = client
+        trackerLog.info("API client created, starting initial fetch")
 
         // Initial fetch
         Task { @MainActor [weak self] in
+            trackerLog.info("API initial fetch starting...")
             await self?.apiClient?.fetchAll()
+            let hasData = self?.apiClient?.latestData != nil
+            trackerLog.info("API initial fetch done, hasData=\(hasData)")
             self?.evaluate()
         }
 
