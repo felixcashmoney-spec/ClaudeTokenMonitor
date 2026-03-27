@@ -87,6 +87,7 @@ None yet.
 |---|-------------|------|--------|-----------|
 | 260327-14j | Add remaining session usage display | 2026-03-27 | edcb2f1 | [260327-14j-add-remaining-session-usage-display](./quick/260327-14j-add-remaining-session-usage-display/) |
 | 260327-1d5 | Fix remaining session usage display and wire UsageWindowTracker | 2026-03-27 | 6f6c682 | [260327-1d5-fix-remaining-session-usage-display-and-](./quick/260327-1d5-fix-remaining-session-usage-display-and-/) |
+| 260327-ox0 | Fix reset time parsing, project discovery, and add dashboard improvements | 2026-03-27 | 5d7cb65 | [260327-ox0-fix-reset-time-parsing-project-discovery](./quick/260327-ox0-fix-reset-time-parsing-project-discovery/) |
 | 260327-pc1 | Major accuracy overhaul — parse Claude Desktop log for authoritative rate limit data | 2026-03-27 | 65ebea6 | [260327-pc1-major-accuracy-overhaul-parse-claude-des](./quick/260327-pc1-major-accuracy-overhaul-parse-claude-des/) |
 
 ## Session Continuity
