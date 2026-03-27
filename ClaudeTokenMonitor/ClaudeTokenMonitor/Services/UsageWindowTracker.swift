@@ -22,6 +22,14 @@ struct UsageWindow {
     let learnedLimit: Int?
     let isLimited: Bool
 
+    // API-sourced credit data
+    let creditBalanceCents: Int?            // prepaid credits in cents
+    let creditCurrency: String?             // "EUR"
+    let extraUsageSpentCents: Int?          // extra usage used_credits in cents
+    let extraUsageMonthlyLimitCents: Int?   // monthly limit in cents
+    let extraUsageEnabled: Bool?            // is extra usage enabled
+    let apiDataFreshness: Date?             // when API data was last fetched
+
     var remaining: Int? {
         guard let limit = learnedLimit else { return nil }
         return max(0, limit - tokensUsed)
@@ -46,6 +54,8 @@ final class UsageWindowTracker: ObservableObject {
     private var timer: Timer?
     private var logFileParser: LogFileParser?
     private var logParserCancellable: AnyCancellable?
+    private var apiClient: ClaudeAPIClient?
+    private var apiTimer: Timer?
 
     /// Claude Pro resets usage in ~5 hour windows
     private let windowDuration: TimeInterval = 5 * 60 * 60
@@ -74,6 +84,23 @@ final class UsageWindowTracker: ObservableObject {
                 self?.evaluate()
             }
         }
+
+        // Start API polling every 60 seconds
+        let client = ClaudeAPIClient()
+        apiClient = client
+
+        // Initial fetch
+        Task { @MainActor [weak self] in
+            await self?.apiClient?.fetchAll()
+            self?.evaluate()
+        }
+
+        apiTimer = Timer.scheduledTimer(withTimeInterval: 60.0, repeats: true) { [weak self] _ in
+            Task { @MainActor in
+                await self?.apiClient?.fetchAll()
+                self?.evaluate()
+            }
+        }
     }
 
     func stop() {
@@ -82,6 +109,9 @@ final class UsageWindowTracker: ObservableObject {
         logFileParser?.stop()
         logFileParser = nil
         logParserCancellable = nil
+        apiTimer?.invalidate()
+        apiTimer = nil
+        apiClient = nil
     }
 
     func evaluate() {
@@ -166,18 +196,61 @@ final class UsageWindowTracker: ObservableObject {
 
         let tokenWindow = buildTokenWindow(now: now)
 
+        let apiData = apiClient?.latestData
+        let apiIsFresh = apiData.map { Date().timeIntervalSince($0.fetchedAt) < 120 } ?? false
+
+        // When API data is fresh, prefer its utilization values (authoritative from claude.ai)
+        let fiveHourUtil: Double
+        if apiIsFresh, let apiUtil = apiData?.usage?.five_hour.utilization {
+            fiveHourUtil = Double(apiUtil) / 100.0
+        } else {
+            fiveHourUtil = isLimited ? max(fiveHour.utilization, 1.0) : fiveHour.utilization
+        }
+
+        // Use API reset time if available and more precise
+        let fiveHourResetTime: Date
+        if apiIsFresh, let apiResetsAt = apiData?.usage?.five_hour.resets_at {
+            let isoFormatter = ISO8601DateFormatter()
+            isoFormatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+            fiveHourResetTime = isoFormatter.date(from: apiResetsAt) ?? effectiveResetTime
+        } else {
+            fiveHourResetTime = effectiveResetTime
+        }
+
+        let sevenDayUtil: Double
+        if apiIsFresh, let apiUtil7d = apiData?.usage?.seven_day.utilization {
+            sevenDayUtil = Double(apiUtil7d) / 100.0
+        } else {
+            sevenDayUtil = sevenDay.utilization
+        }
+
+        let sevenDayResetTime: Date
+        if apiIsFresh, let apiResetsAt7d = apiData?.usage?.seven_day.resets_at {
+            let isoFormatter = ISO8601DateFormatter()
+            isoFormatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+            sevenDayResetTime = isoFormatter.date(from: apiResetsAt7d) ?? sevenDay.resetsAt
+        } else {
+            sevenDayResetTime = sevenDay.resetsAt
+        }
+
         currentWindow = UsageWindow(
-            fiveHourUtilization: isLimited ? max(fiveHour.utilization, 1.0) : fiveHour.utilization,
-            fiveHourResetTime: effectiveResetTime,
+            fiveHourUtilization: fiveHourUtil,
+            fiveHourResetTime: fiveHourResetTime,
             fiveHourStatus: isLimited ? "exceeded_limit" : fiveHour.status,
-            sevenDayUtilization: sevenDay.utilization,
-            sevenDayResetTime: sevenDay.resetsAt,
+            sevenDayUtilization: sevenDayUtil,
+            sevenDayResetTime: sevenDayResetTime,
             sevenDayStatus: sevenDay.status,
             overageDisabledReason: logInfo.overageDisabledReason,
             overageInUse: logInfo.overageInUse,
             tokensUsed: tokenWindow?.tokensUsed ?? 0,
             learnedLimit: tokenWindow?.learnedLimit,
-            isLimited: isLimited
+            isLimited: isLimited,
+            creditBalanceCents: apiIsFresh ? apiData?.prepaidCredits?.amount : nil,
+            creditCurrency: apiIsFresh ? apiData?.prepaidCredits?.currency : nil,
+            extraUsageSpentCents: apiIsFresh ? apiData?.usage?.extra_usage.used_credits : nil,
+            extraUsageMonthlyLimitCents: apiIsFresh ? apiData?.usage?.extra_usage.monthly_limit : nil,
+            extraUsageEnabled: apiIsFresh ? apiData?.usage?.extra_usage.is_enabled : nil,
+            apiDataFreshness: apiIsFresh ? apiData?.fetchedAt : nil
         )
     }
 
@@ -190,6 +263,9 @@ final class UsageWindowTracker: ObservableObject {
         let sevenDay = logInfo?.sevenDayWindow
         let overage = logInfo
 
+        let apiData = apiClient?.latestData
+        let apiIsFresh = apiData.map { Date().timeIntervalSince($0.fetchedAt) < 120 } ?? false
+
         currentWindow = UsageWindow(
             fiveHourUtilization: isLimited ? 1.0 : nil,
             fiveHourResetTime: info.resetTime,
@@ -201,13 +277,22 @@ final class UsageWindowTracker: ObservableObject {
             overageInUse: overage?.overageInUse ?? false,
             tokensUsed: tokenWindow?.tokensUsed ?? 0,
             learnedLimit: tokenWindow?.learnedLimit,
-            isLimited: isLimited
+            isLimited: isLimited,
+            creditBalanceCents: apiIsFresh ? apiData?.prepaidCredits?.amount : nil,
+            creditCurrency: apiIsFresh ? apiData?.prepaidCredits?.currency : nil,
+            extraUsageSpentCents: apiIsFresh ? apiData?.usage?.extra_usage.used_credits : nil,
+            extraUsageMonthlyLimitCents: apiIsFresh ? apiData?.usage?.extra_usage.monthly_limit : nil,
+            extraUsageEnabled: apiIsFresh ? apiData?.usage?.extra_usage.is_enabled : nil,
+            apiDataFreshness: apiIsFresh ? apiData?.fetchedAt : nil
         )
     }
 
     // MARK: - Token-based evaluation (fallback)
 
     private func evaluateFromTokens(now: Date) {
+        let apiData = apiClient?.latestData
+        let apiIsFresh = apiData.map { Date().timeIntervalSince($0.fetchedAt) < 120 } ?? false
+
         guard let window = buildTokenWindow(now: now) else {
             // No data at all
             currentWindow = UsageWindow(
@@ -221,7 +306,13 @@ final class UsageWindowTracker: ObservableObject {
                 overageInUse: false,
                 tokensUsed: 0,
                 learnedLimit: nil,
-                isLimited: false
+                isLimited: false,
+                creditBalanceCents: apiIsFresh ? apiData?.prepaidCredits?.amount : nil,
+                creditCurrency: apiIsFresh ? apiData?.prepaidCredits?.currency : nil,
+                extraUsageSpentCents: apiIsFresh ? apiData?.usage?.extra_usage.used_credits : nil,
+                extraUsageMonthlyLimitCents: apiIsFresh ? apiData?.usage?.extra_usage.monthly_limit : nil,
+                extraUsageEnabled: apiIsFresh ? apiData?.usage?.extra_usage.is_enabled : nil,
+                apiDataFreshness: apiIsFresh ? apiData?.fetchedAt : nil
             )
             return
         }
@@ -237,7 +328,13 @@ final class UsageWindowTracker: ObservableObject {
             overageInUse: false,
             tokensUsed: window.tokensUsed,
             learnedLimit: window.learnedLimit,
-            isLimited: window.isLimited
+            isLimited: window.isLimited,
+            creditBalanceCents: apiIsFresh ? apiData?.prepaidCredits?.amount : nil,
+            creditCurrency: apiIsFresh ? apiData?.prepaidCredits?.currency : nil,
+            extraUsageSpentCents: apiIsFresh ? apiData?.usage?.extra_usage.used_credits : nil,
+            extraUsageMonthlyLimitCents: apiIsFresh ? apiData?.usage?.extra_usage.monthly_limit : nil,
+            extraUsageEnabled: apiIsFresh ? apiData?.usage?.extra_usage.is_enabled : nil,
+            apiDataFreshness: apiIsFresh ? apiData?.fetchedAt : nil
         )
     }
 

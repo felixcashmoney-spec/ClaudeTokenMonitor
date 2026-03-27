@@ -111,6 +111,9 @@ struct PlanUsageBanner: View {
                 // Extra usage status banner
                 extraUsageBanner(window: window)
 
+                // Credit & Spending section (only shown when API data available)
+                creditSpendingBanner(window: window)
+
                 // Footer
                 if window.fiveHourUtilization != nil {
                     Text("Basierend auf Claude Rate-Limit Daten")
@@ -220,6 +223,67 @@ struct PlanUsageBanner: View {
                 }
             }
             .frame(height: 6)
+        }
+    }
+
+    private func formatEUR(cents: Int) -> String {
+        let formatter = NumberFormatter()
+        formatter.numberStyle = .currency
+        formatter.currencyCode = "EUR"
+        formatter.locale = Locale(identifier: "de_DE")
+        return formatter.string(from: NSNumber(value: Double(cents) / 100.0)) ?? "\(Double(cents) / 100.0) EUR"
+    }
+
+    @ViewBuilder
+    private func creditSpendingBanner(window: UsageWindow) -> some View {
+        if let balance = window.creditBalanceCents {
+            Divider()
+            VStack(alignment: .leading, spacing: 6) {
+                HStack {
+                    Image(systemName: "eurosign.circle")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    Text("Guthaben & Ausgaben")
+                        .font(.caption.weight(.semibold))
+                }
+
+                HStack {
+                    Text("Prepaid-Guthaben:")
+                        .font(.caption2)
+                    Spacer()
+                    Text(formatEUR(cents: balance))
+                        .font(.caption2.weight(.semibold).monospacedDigit())
+                        .foregroundStyle(.green)
+                }
+
+                if let spent = window.extraUsageSpentCents, window.extraUsageEnabled == true {
+                    HStack {
+                        Text("Extra Usage ausgegeben:")
+                            .font(.caption2)
+                        Spacer()
+                        Text(formatEUR(cents: spent))
+                            .font(.caption2.weight(.semibold).monospacedDigit())
+                            .foregroundStyle(spent > 0 ? .orange : .secondary)
+                    }
+                    if let limit = window.extraUsageMonthlyLimitCents {
+                        HStack {
+                            Text("Monatliches Limit:")
+                                .font(.caption2)
+                                .foregroundStyle(.secondary)
+                            Spacer()
+                            Text(formatEUR(cents: limit))
+                                .font(.caption2.monospacedDigit())
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                }
+
+                if let freshness = window.apiDataFreshness {
+                    Text("Aktualisiert: \(freshness, style: .relative) zurueck")
+                        .font(.system(size: 9))
+                        .foregroundStyle(.tertiary)
+                }
+            }
         }
     }
 
