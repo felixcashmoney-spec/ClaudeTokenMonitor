@@ -24,6 +24,7 @@
 		AA0000010000000000000F0A /* BudgetSettings.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000010000000000000F0B /* BudgetSettings.swift */; };
 		AA0000010000000000000F1A /* BudgetMonitor.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000010000000000000F1B /* BudgetMonitor.swift */; };
 		AA0000010000000000000F2A /* UsageWindowTracker.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000010000000000000F2B /* UsageWindowTracker.swift */; };
+		AA0000010000000000000F3A /* LogFileParser.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000010000000000000F3B /* LogFileParser.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -45,6 +46,7 @@
 		AA0000010000000000000F0B /* BudgetSettings.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BudgetSettings.swift; sourceTree = "<group>"; };
 		AA0000010000000000000F1B /* BudgetMonitor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BudgetMonitor.swift; sourceTree = "<group>"; };
 		AA0000010000000000000F2B /* UsageWindowTracker.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UsageWindowTracker.swift; sourceTree = "<group>"; };
+		AA0000010000000000000F3B /* LogFileParser.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LogFileParser.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -93,6 +95,7 @@
 				AA00000100000000000000CC /* SessionWatcher.swift */,
 				AA0000010000000000000F1B /* BudgetMonitor.swift */,
 				AA0000010000000000000F2B /* UsageWindowTracker.swift */,
+				AA0000010000000000000F3B /* LogFileParser.swift */,
 			);
 			path = Services;
 			sourceTree = "<group>";
@@ -205,6 +208,7 @@
 				AA00000100000000000000EA /* TokenFormatter.swift in Sources */,
 				AA0000010000000000000F0A /* BudgetSettings.swift in Sources */,
 				AA0000010000000000000F1A /* BudgetMonitor.swift in Sources */,
+				AA0000010000000000000F3A /* LogFileParser.swift in Sources */,
 				AA0000010000000000000F2A /* UsageWindowTracker.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
