@@ -3,8 +3,8 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-stopped_at: Completed quick task 260327-qfx
-last_updated: "2026-03-27T19:10:00.000Z"
+stopped_at: Completed quick task 260328-ip5
+last_updated: "2026-03-28T12:49:08.423Z"
 last_activity: 2026-03-27
 progress:
   total_phases: 5
@@ -75,6 +75,7 @@ Recent decisions affecting current work:
 - [Phase quick-260327-qfx]: ClaudeAPIClient owned by UsageWindowTracker — same encapsulation pattern as LogFileParser
 - [Phase quick-260327-qfx]: API data freshness threshold 120s — stale API data falls back to log-based values
 - [Phase quick-260327-qfx]: lastActiveOrg cookie checked as plaintext first before attempting decryption
+- [Phase quick-260328-ip5]: Static ISO8601DateFormatter on UsageWindowTracker class — avoids 5+ allocations per evaluate() cycle
 
 ### Pending Todos
 
@@ -93,9 +94,10 @@ None yet.
 | 260327-ox0 | Fix reset time parsing, project discovery, and add dashboard improvements | 2026-03-27 | 5d7cb65 | [260327-ox0-fix-reset-time-parsing-project-discovery](./quick/260327-ox0-fix-reset-time-parsing-project-discovery/) |
 | 260327-pc1 | Major accuracy overhaul — parse Claude Desktop log for authoritative rate limit data | 2026-03-27 | 65ebea6 | [260327-pc1-major-accuracy-overhaul-parse-claude-des](./quick/260327-pc1-major-accuracy-overhaul-parse-claude-des/) |
 | 260327-qfx | Add ClaudeAPIClient for live usage data from claude.ai API | 2026-03-27 | d2ba403 | [260327-qfx-add-claudeapiclient-service-for-live-usa](./quick/260327-qfx-add-claudeapiclient-service-for-live-usa/) |
+| 260328-ip5 | Code quality: debug log level, static formatter, dead code, Logger, threshold validation, monospacedDigit | 2026-03-28 | 9468698 | [260328-ip5-kleine-verbesserungen-debug-log-level-st](./quick/260328-ip5-kleine-verbesserungen-debug-log-level-st/) |
 
 ## Session Continuity
 
-Last session: 2026-03-27T19:10:00.000Z
-Stopped at: Completed quick task 260327-qfx
+Last session: 2026-03-28T12:49:07.463Z
+Stopped at: Completed quick task 260328-ip5
 Resume file: None
