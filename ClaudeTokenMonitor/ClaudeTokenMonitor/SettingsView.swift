@@ -51,7 +51,10 @@ struct SettingsView: View {
                     }
                     Slider(value: Binding(
                         get: { settings.warningThreshold1 },
-                        set: { settings.warningThreshold1 = $0; try? modelContext.save() }
+                        set: {
+                            settings.warningThreshold1 = min($0, settings.warningThreshold2 - 0.05)
+                            try? modelContext.save()
+                        }
                     ), in: 0.1...0.9, step: 0.05)
                     .tint(.yellow)
                 }
@@ -69,7 +72,10 @@ struct SettingsView: View {
                     }
                     Slider(value: Binding(
                         get: { settings.warningThreshold2 },
-                        set: { settings.warningThreshold2 = $0; try? modelContext.save() }
+                        set: {
+                            settings.warningThreshold2 = max($0, settings.warningThreshold1 + 0.05)
+                            try? modelContext.save()
+                        }
                     ), in: 0.1...0.99, step: 0.05)
                     .tint(.orange)
                 }
