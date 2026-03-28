@@ -53,6 +53,12 @@ struct UsageWindow {
 final class UsageWindowTracker: ObservableObject {
     @Published var currentWindow: UsageWindow?
 
+    private static let isoFormatter: ISO8601DateFormatter = {
+        let f = ISO8601DateFormatter()
+        f.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        return f
+    }()
+
     private var modelContext: ModelContext?
     private var timer: Timer?
     private var logFileParser: LogFileParser?
@@ -102,7 +108,7 @@ final class UsageWindowTracker: ObservableObject {
             self?.evaluate()
         }
 
-        apiTimer = Timer.scheduledTimer(withTimeInterval: 60.0, repeats: true) { [weak self] _ in
+        apiTimer = Timer.scheduledTimer(withTimeInterval: 30.0, repeats: true) { [weak self] _ in
             Task { @MainActor in
                 await self?.apiClient?.fetchAll()
                 self?.evaluate()
@@ -124,19 +130,16 @@ final class UsageWindowTracker: ObservableObject {
     func evaluate() {
         let now = Date()
 
-        // Strategy: combine data from BOTH sources
-        // 1. Desktop log gives: exact utilization %, 7d window, overage status
-        // 2. JSONL session data gives: most recent rate limit message with reset time
-        // The JSONL data is often MORE recent (Claude Code runs update it live)
-
         let logInfo = logFileParser?.latestInfo
         let logIsFresh = logInfo.map { now.timeIntervalSince($0.timestamp) < logDataFreshnessInterval } ?? false
 
-        // Get the most recent rate limit from JSONL sessions
         let sessionResetInfo = findLatestSessionRateLimit(now: now)
 
+        let apiData = apiClient?.latestData
+        let apiAge = apiData.map { now.timeIntervalSince($0.fetchedAt) }
+        trackerLog.debug("evaluate: logIsFresh=\(logIsFresh), logUtil7d=\(logInfo?.sevenDayWindow.utilization ?? -1), apiUsage=\(apiData?.usage != nil), apiAge=\(apiAge ?? -1)s, api5h=\(apiData?.usage?.five_hour.utilization ?? -1), api7d=\(apiData?.usage?.seven_day.utilization ?? -1)")
+
         if logIsFresh, let logInfo {
-            // We have log data — use it as base, but override reset time from JSONL if newer
             evaluateFromLogData(logInfo, sessionResetInfo: sessionResetInfo, now: now)
         } else if let sessionResetInfo {
             // No fresh log data, but we have JSONL rate limit info
@@ -217,9 +220,7 @@ final class UsageWindowTracker: ObservableObject {
         // Use API reset time if available and more precise
         let fiveHourResetTime: Date
         if apiIsFresh, let apiResetsAt = apiData?.usage?.five_hour.resets_at {
-            let isoFormatter = ISO8601DateFormatter()
-            isoFormatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-            fiveHourResetTime = isoFormatter.date(from: apiResetsAt) ?? effectiveResetTime
+            fiveHourResetTime = Self.isoFormatter.date(from: apiResetsAt) ?? effectiveResetTime
         } else {
             fiveHourResetTime = effectiveResetTime
         }
@@ -233,9 +234,7 @@ final class UsageWindowTracker: ObservableObject {
 
         let sevenDayResetTime: Date
         if apiIsFresh, let apiResetsAt7d = apiData?.usage?.seven_day.resets_at {
-            let isoFormatter = ISO8601DateFormatter()
-            isoFormatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-            sevenDayResetTime = isoFormatter.date(from: apiResetsAt7d) ?? sevenDay.resetsAt
+            sevenDayResetTime = Self.isoFormatter.date(from: apiResetsAt7d) ?? sevenDay.resetsAt
         } else {
             sevenDayResetTime = sevenDay.resetsAt
         }
@@ -266,19 +265,47 @@ final class UsageWindowTracker: ObservableObject {
         let isLimited = now < info.resetTime
         let tokenWindow = buildTokenWindow(now: now)
 
-        // Use desktop log for 7d window and overage even if the 5h reset is stale
         let sevenDay = logInfo?.sevenDayWindow
         let overage = logInfo
 
         let apiData = apiClient?.latestData
         let apiIsFresh = apiData.map { Date().timeIntervalSince($0.fetchedAt) < 120 } ?? false
 
+        // API data overrides log/session data when fresh
+        let fiveHourUtil: Double?
+        if apiIsFresh, let apiUtil = apiData?.usage?.five_hour.utilization {
+            fiveHourUtil = Double(apiUtil) / 100.0
+        } else {
+            fiveHourUtil = isLimited ? 1.0 : nil
+        }
+
+        let sevenDayUtil: Double?
+        if apiIsFresh, let apiUtil7d = apiData?.usage?.seven_day.utilization {
+            sevenDayUtil = Double(apiUtil7d) / 100.0
+        } else {
+            sevenDayUtil = sevenDay?.utilization
+        }
+
+        let fiveHourResetTime: Date
+        if apiIsFresh, let apiResetsAt = apiData?.usage?.five_hour.resets_at {
+            fiveHourResetTime = Self.isoFormatter.date(from: apiResetsAt) ?? info.resetTime
+        } else {
+            fiveHourResetTime = info.resetTime
+        }
+
+        let sevenDayResetTime: Date?
+        if apiIsFresh, let apiResetsAt7d = apiData?.usage?.seven_day.resets_at {
+            sevenDayResetTime = Self.isoFormatter.date(from: apiResetsAt7d) ?? sevenDay?.resetsAt
+        } else {
+            sevenDayResetTime = sevenDay?.resetsAt
+        }
+
         currentWindow = UsageWindow(
-            fiveHourUtilization: isLimited ? 1.0 : nil,
-            fiveHourResetTime: info.resetTime,
+            fiveHourUtilization: fiveHourUtil,
+            fiveHourResetTime: fiveHourResetTime,
             fiveHourStatus: isLimited ? "exceeded_limit" : "within_limit",
-            sevenDayUtilization: sevenDay?.utilization,
-            sevenDayResetTime: sevenDay?.resetsAt,
+            sevenDayUtilization: sevenDayUtil,
+            sevenDayResetTime: sevenDayResetTime,
             sevenDayStatus: sevenDay?.status,
             overageDisabledReason: overage?.overageDisabledReason,
             overageInUse: overage?.overageInUse ?? false,
@@ -300,20 +327,27 @@ final class UsageWindowTracker: ObservableObject {
         let apiData = apiClient?.latestData
         let apiIsFresh = apiData.map { Date().timeIntervalSince($0.fetchedAt) < 120 } ?? false
 
+        // API-sourced utilization values (used regardless of evaluation path)
+        let apiUsage = apiIsFresh ? apiData?.usage : nil
+        let api5hUtil: Double? = apiUsage.map { Double($0.five_hour.utilization) / 100.0 }
+        let api7dUtil: Double? = apiUsage.map { Double($0.seven_day.utilization) / 100.0 }
+        let api5hReset: Date? = apiUsage.flatMap { Self.isoFormatter.date(from: $0.five_hour.resets_at) }
+        let api7dReset: Date? = apiUsage.flatMap { Self.isoFormatter.date(from: $0.seven_day.resets_at) }
+
         guard let window = buildTokenWindow(now: now) else {
-            // No data at all
+            // No token data — use API data if available
             currentWindow = UsageWindow(
-                fiveHourUtilization: nil,
-                fiveHourResetTime: nil,
-                fiveHourStatus: nil,
-                sevenDayUtilization: nil,
-                sevenDayResetTime: nil,
-                sevenDayStatus: nil,
+                fiveHourUtilization: api5hUtil,
+                fiveHourResetTime: api5hReset,
+                fiveHourStatus: api5hUtil.map { $0 >= 1.0 ? "exceeded_limit" : "within_limit" },
+                sevenDayUtilization: api7dUtil,
+                sevenDayResetTime: api7dReset,
+                sevenDayStatus: api7dUtil.map { $0 >= 1.0 ? "exceeded_limit" : "within_limit" },
                 overageDisabledReason: nil,
                 overageInUse: false,
                 tokensUsed: 0,
                 learnedLimit: nil,
-                isLimited: false,
+                isLimited: api5hUtil.map { $0 >= 1.0 } ?? false,
                 creditBalanceCents: apiIsFresh ? apiData?.prepaidCredits?.amount : nil,
                 creditCurrency: apiIsFresh ? apiData?.prepaidCredits?.currency : nil,
                 extraUsageSpentCents: apiIsFresh ? apiData?.usage?.extra_usage.used_credits : nil,
@@ -325,12 +359,12 @@ final class UsageWindowTracker: ObservableObject {
         }
 
         currentWindow = UsageWindow(
-            fiveHourUtilization: window.usagePercent,
-            fiveHourResetTime: window.resetTime,
+            fiveHourUtilization: api5hUtil ?? window.usagePercent,
+            fiveHourResetTime: api5hReset ?? window.resetTime,
             fiveHourStatus: window.isLimited ? "exceeded_limit" : "within_limit",
-            sevenDayUtilization: nil,
-            sevenDayResetTime: nil,
-            sevenDayStatus: nil,
+            sevenDayUtilization: api7dUtil,
+            sevenDayResetTime: api7dReset,
+            sevenDayStatus: api7dUtil.map { $0 >= 1.0 ? "exceeded_limit" : "within_limit" },
             overageDisabledReason: nil,
             overageInUse: false,
             tokensUsed: window.tokensUsed,

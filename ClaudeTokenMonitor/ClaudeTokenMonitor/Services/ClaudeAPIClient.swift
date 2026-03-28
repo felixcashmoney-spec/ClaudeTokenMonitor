@@ -266,11 +266,6 @@ final class ClaudeAPIClient: NSObject, ObservableObject, WKNavigationDelegate {
         isLoggedIn = true
     }
 
-    private func navigateAndWaitForLogin() async {
-        guard let webView else { return }
-        await loadAndWait(webView: webView, url: URL(string: "https://claude.ai/settings/usage")!)
-    }
-
     /// Load a URL in a webView and wait for navigation to finish
     private func loadAndWait(webView: WKWebView, url: URL) async {
         await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
