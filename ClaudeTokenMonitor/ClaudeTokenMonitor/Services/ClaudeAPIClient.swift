@@ -57,44 +57,42 @@ final class ClaudeAPIClient: NSObject, ObservableObject, WKNavigationDelegate {
     @Published var isLoggedIn: Bool = false
     @Published var needsLogin: Bool = false
 
-    private var webView: WKWebView?
     private var loginWindow: NSWindow?
     private var loginWebView: WKWebView?
     private var pendingContinuation: CheckedContinuation<Void, Never>?
     private var navigationContinuation: CheckedContinuation<Void, Never>?
+    /// Temporary webView active only during a fetchAll() call
+    private var activeWebView: WKWebView?
 
     // Shared data store so login session persists across app launches
     private static let dataStore: WKWebsiteDataStore = .default()
 
     override init() {
         super.init()
-        setupWebView()
-    }
-
-    private func setupWebView() {
-        let config = WKWebViewConfiguration()
-        config.websiteDataStore = Self.dataStore
-        let wv = WKWebView(frame: .zero, configuration: config)
-        wv.navigationDelegate = self
-        webView = wv
     }
 
     // MARK: - Public API
 
     func fetchAll() async {
-        guard let webView else {
-            logger.info("No WebView available")
-            return
+        // Create a temporary WKWebView for this fetch cycle, release it when done
+        let config = WKWebViewConfiguration()
+        config.websiteDataStore = Self.dataStore
+        let wv = WKWebView(frame: .zero, configuration: config)
+        wv.navigationDelegate = self
+        activeWebView = wv
+        defer {
+            wv.navigationDelegate = nil
+            activeWebView = nil
         }
 
         // Make sure we're on claude.ai domain first
-        if webView.url?.host != "claude.ai" {
+        if wv.url?.host != "claude.ai" {
             logger.info("Navigating to claude.ai...")
-            await loadAndWait(webView: webView, url: URL(string: "https://claude.ai/settings/usage")!)
+            await loadAndWait(webView: wv, url: URL(string: "https://claude.ai/settings/usage")!)
         }
 
-        let currentURL = webView.url?.absoluteString ?? ""
-        let currentPath = webView.url?.path ?? ""
+        let currentURL = wv.url?.absoluteString ?? ""
+        let currentPath = wv.url?.path ?? ""
         logger.info("Page loaded, path contains 'login': \(currentPath.contains("login"))")
 
         // Check if we got redirected to login
@@ -104,7 +102,7 @@ final class ClaudeAPIClient: NSObject, ObservableObject, WKNavigationDelegate {
             isLoggedIn = false
             await showLoginWindow()
             // After login, retry
-            await loadAndWait(webView: webView, url: URL(string: "https://claude.ai/settings/usage")!)
+            await loadAndWait(webView: wv, url: URL(string: "https://claude.ai/settings/usage")!)
         }
 
         isLoggedIn = true
@@ -114,7 +112,7 @@ final class ClaudeAPIClient: NSObject, ObservableObject, WKNavigationDelegate {
         let cookieJS = "document.cookie.split(';').map(c => c.trim()).find(c => c.startsWith('lastActiveOrg='))?.split('=')?.[1] || ''"
         let orgId: String?
         do {
-            orgId = try await webView.evaluateJavaScript(cookieJS) as? String
+            orgId = try await wv.evaluateJavaScript(cookieJS) as? String
             logger.info("orgId from cookie: \(orgId ?? "nil")")
         } catch {
             logger.info("Cookie JS error: \(error.localizedDescription)")
@@ -136,17 +134,17 @@ final class ClaudeAPIClient: NSObject, ObservableObject, WKNavigationDelegate {
                 return '';
             })()
             """
-            let fallbackOrgId = try? await webView.evaluateJavaScript(pageOrgJS) as? String
+            let fallbackOrgId = try? await wv.evaluateJavaScript(pageOrgJS) as? String
             guard let fallbackOrgId, !fallbackOrgId.isEmpty else {
                 logger.info("Could not determine orgId from any source")
                 return
             }
             logger.info("orgId from page scan: \(fallbackOrgId)")
-            await fetchAPIData(webView: webView, orgId: fallbackOrgId)
+            await fetchAPIData(webView: wv, orgId: fallbackOrgId)
             return
         }
 
-        await fetchAPIData(webView: webView, orgId: orgId)
+        await fetchAPIData(webView: wv, orgId: orgId)
     }
 
     private func fetchAPIData(webView: WKWebView, orgId: String) async {
@@ -284,7 +282,7 @@ final class ClaudeAPIClient: NSObject, ObservableObject, WKNavigationDelegate {
             logger.info("Page loaded: \(url.absoluteString)")
 
             // Main webView navigation completed
-            if webView === self.webView {
+            if webView === self.activeWebView {
                 if let continuation = self.navigationContinuation {
                     self.navigationContinuation = nil
                     continuation.resume()
@@ -308,7 +306,7 @@ final class ClaudeAPIClient: NSObject, ObservableObject, WKNavigationDelegate {
     nonisolated func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: Error) {
         Task { @MainActor in
             logger.info("Navigation failed: \(error.localizedDescription)")
-            if webView === self.webView {
+            if webView === self.activeWebView {
                 if let continuation = self.navigationContinuation {
                     self.navigationContinuation = nil
                     continuation.resume()

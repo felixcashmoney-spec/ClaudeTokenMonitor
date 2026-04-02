@@ -85,7 +85,7 @@ struct UsageLimitsCard: View {
 
                 // Next API update
                 if let freshness = window.apiDataFreshness {
-                    let nextUpdate = freshness.addingTimeInterval(30)
+                    let nextUpdate = freshness.addingTimeInterval(120)
                     Divider().padding(.vertical, 6)
                     HStack {
                         Image(systemName: "arrow.clockwise")
