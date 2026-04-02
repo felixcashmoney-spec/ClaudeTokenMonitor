@@ -243,86 +243,6 @@ struct CreditsCard: View {
     }
 }
 
-// MARK: - Current Session Banner
-
-struct CurrentSessionBanner: View {
-    let session: Session
-    @State private var dotOpacity: Double = 1.0
-
-    private var sessionDuration: String {
-        let elapsed = Date().timeIntervalSince(session.createdAt)
-        let hours = Int(elapsed) / 3600
-        let minutes = (Int(elapsed) % 3600) / 60
-        if hours > 0 {
-            return "\(hours)h \(minutes)m"
-        } else {
-            return "\(minutes)m"
-        }
-    }
-
-    var body: some View {
-        HStack(spacing: 10) {
-            // Pulsing dot
-            Circle()
-                .fill(.green)
-                .frame(width: 6, height: 6)
-                .opacity(dotOpacity)
-                .onAppear {
-                    withAnimation(.easeInOut(duration: 1.2).repeatForever(autoreverses: true)) {
-                        dotOpacity = 0.2
-                    }
-                }
-
-            // Project info
-            VStack(alignment: .leading, spacing: 1) {
-                Text(session.projectName)
-                    .font(.caption.weight(.semibold))
-                    .lineLimit(1)
-                Text("seit \(sessionDuration)")
-                    .font(.system(size: 10).monospacedDigit())
-                    .foregroundStyle(.secondary)
-            }
-
-            Spacer()
-
-            // Token counts
-            HStack(spacing: 12) {
-                tokenStat(TokenFormatter.format(session.totalInputTokens), label: "In")
-                tokenStat(TokenFormatter.format(session.totalOutputTokens), label: "Out")
-                tokenStat(TokenFormatter.format(session.totalTokens), label: "Gesamt", bold: true)
-            }
-        }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 8)
-        .background(.green.opacity(0.06))
-        .background(.ultraThinMaterial)
-        .clipShape(RoundedRectangle(cornerRadius: 8))
-        .overlay(alignment: .leading) {
-            Rectangle()
-                .fill(.green)
-                .frame(width: 3)
-                .clipShape(
-                    UnevenRoundedRectangle(
-                        topLeadingRadius: 8,
-                        bottomLeadingRadius: 8,
-                        bottomTrailingRadius: 0,
-                        topTrailingRadius: 0
-                    )
-                )
-        }
-    }
-
-    private func tokenStat(_ value: String, label: String, bold: Bool = false) -> some View {
-        VStack(spacing: 1) {
-            Text(value)
-                .font(.system(size: 10, weight: bold ? .semibold : .regular, design: .monospaced))
-            Text(label)
-                .font(.system(size: 8))
-                .foregroundStyle(.tertiary)
-        }
-    }
-}
-
 // MARK: - Token Stats Section
 
 struct TokenStatsSection: View {
@@ -513,10 +433,6 @@ struct DashboardView: View {
         return byProject.sorted { $0.value > $1.value }.map { (name: $0.key, tokens: $0.value) }
     }
 
-    private var currentSession: Session? {
-        sessions.sorted { $0.lastActivityAt > $1.lastActivityAt }.first
-    }
-
     private var monthlyTokens: Int {
         let cal = Calendar.current
         let startOfMonth = cal.date(from: cal.dateComponents([.year, .month], from: Date())) ?? Date()
@@ -545,11 +461,6 @@ struct DashboardView: View {
                     }
                     .pickerStyle(.segmented)
                     .frame(width: 170)
-                }
-
-                // Active session
-                if let session = currentSession {
-                    CurrentSessionBanner(session: session)
                 }
 
                 // Usage limits + Credits side by side or stacked
@@ -597,7 +508,7 @@ struct DashboardView: View {
             }
             .padding(14)
         }
-        .frame(width: 380, height: 520)
+        .frame(width: 380, height: 460)
         .environment(\.locale, Locale(identifier: "de_DE"))
     }
 
