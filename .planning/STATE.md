@@ -28,7 +28,7 @@ See: .planning/PROJECT.md (updated 2026-03-26)
 Phase: 01 (app-foundation) — EXECUTING
 Plan: 2 of 3
 Status: Ready to execute
-Last activity: 2026-03-27
+Last activity: 2026-04-03 - Completed quick task 260403-tck: TokenMonitor smooth quit, safe positioning, standalone build
 
 Progress: [░░░░░░░░░░] 0%
 
@@ -95,6 +95,7 @@ None yet.
 | 260327-pc1 | Major accuracy overhaul — parse Claude Desktop log for authoritative rate limit data | 2026-03-27 | 65ebea6 | [260327-pc1-major-accuracy-overhaul-parse-claude-des](./quick/260327-pc1-major-accuracy-overhaul-parse-claude-des/) |
 | 260327-qfx | Add ClaudeAPIClient for live usage data from claude.ai API | 2026-03-27 | d2ba403 | [260327-qfx-add-claudeapiclient-service-for-live-usa](./quick/260327-qfx-add-claudeapiclient-service-for-live-usa/) |
 | 260328-ip5 | Code quality: debug log level, static formatter, dead code, Logger, threshold validation, monospacedDigit | 2026-03-28 | 9468698 | [260328-ip5-kleine-verbesserungen-debug-log-level-st](./quick/260328-ip5-kleine-verbesserungen-debug-log-level-st/) |
+| 260403-tck | TokenMonitor: smooth quit, safe positioning, standalone build script | 2026-04-03 | ac66dc0 | [260403-tck-tokenmonitor-fluessigeres-schliessen-sta](./quick/260403-tck-tokenmonitor-fluessigeres-schliessen-sta/) |
 
 ## Session Continuity
 
