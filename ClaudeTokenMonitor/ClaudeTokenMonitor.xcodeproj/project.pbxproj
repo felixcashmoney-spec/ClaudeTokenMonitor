@@ -26,6 +26,8 @@
 		AA0000010000000000000F2A /* UsageWindowTracker.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000010000000000000F2B /* UsageWindowTracker.swift */; };
 		AA0000010000000000000F3A /* LogFileParser.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000010000000000000F3B /* LogFileParser.swift */; };
 		AA0000010000000000000F4A /* ClaudeAPIClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000010000000000000F4B /* ClaudeAPIClient.swift */; };
+		AA0000010000000000000F5A /* FloatingWidgetWindow.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000010000000000000F5B /* FloatingWidgetWindow.swift */; };
+		AA0000010000000000000F6A /* FloatingWidgetView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000010000000000000F6B /* FloatingWidgetView.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -49,6 +51,8 @@
 		AA0000010000000000000F2B /* UsageWindowTracker.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UsageWindowTracker.swift; sourceTree = "<group>"; };
 		AA0000010000000000000F3B /* LogFileParser.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LogFileParser.swift; sourceTree = "<group>"; };
 		AA0000010000000000000F4B /* ClaudeAPIClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClaudeAPIClient.swift; sourceTree = "<group>"; };
+		AA0000010000000000000F5B /* FloatingWidgetWindow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FloatingWidgetWindow.swift; sourceTree = "<group>"; };
+		AA0000010000000000000F6B /* FloatingWidgetView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FloatingWidgetView.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -71,6 +75,7 @@
 				AA000001000000000000006B /* Persistence.swift */,
 				AA000001000000000000007B /* LoginItemManager.swift */,
 				AA000001000000000000008B /* SettingsView.swift */,
+				AA0000010000000000000F5B /* FloatingWidgetWindow.swift */,
 				AA00000100000000000000DC /* Models */,
 				AA00000100000000000000EC /* Services */,
 				AA00000100000000000000FC /* Views */,
@@ -108,6 +113,7 @@
 			children = (
 				AA00000100000000000000DD /* DashboardView.swift */,
 				AA00000100000000000000ED /* TokenFormatter.swift */,
+				AA0000010000000000000F6B /* FloatingWidgetView.swift */,
 			);
 			path = Views;
 			sourceTree = "<group>";
@@ -214,6 +220,8 @@
 				AA0000010000000000000F3A /* LogFileParser.swift in Sources */,
 				AA0000010000000000000F2A /* UsageWindowTracker.swift in Sources */,
 				AA0000010000000000000F4A /* ClaudeAPIClient.swift in Sources */,
+				AA0000010000000000000F5A /* FloatingWidgetWindow.swift in Sources */,
+				AA0000010000000000000F6A /* FloatingWidgetView.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

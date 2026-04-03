@@ -88,7 +88,7 @@ final class UsageWindowTracker: ObservableObject {
         parser.start()
         evaluate()
 
-        timer = Timer.scheduledTimer(withTimeInterval: 30.0, repeats: true) { [weak self] _ in
+        timer = Timer.scheduledTimer(withTimeInterval: 15.0, repeats: true) { [weak self] _ in
             Task { @MainActor in
                 self?.evaluate()
             }
@@ -108,7 +108,7 @@ final class UsageWindowTracker: ObservableObject {
             self?.evaluate()
         }
 
-        apiTimer = Timer.scheduledTimer(withTimeInterval: 120.0, repeats: true) { [weak self] _ in
+        apiTimer = Timer.scheduledTimer(withTimeInterval: 15.0, repeats: true) { [weak self] _ in
             Task { @MainActor in
                 await self?.apiClient?.fetchAll()
                 self?.evaluate()
@@ -207,7 +207,7 @@ final class UsageWindowTracker: ObservableObject {
         let tokenWindow = buildTokenWindow(now: now)
 
         let apiData = apiClient?.latestData
-        let apiIsFresh = apiData.map { Date().timeIntervalSince($0.fetchedAt) < 240 } ?? false
+        let apiIsFresh = apiData.map { Date().timeIntervalSince($0.fetchedAt) < 30 } ?? false
 
         // When API data is fresh, prefer its utilization values (authoritative from claude.ai)
         let fiveHourUtil: Double
@@ -269,7 +269,7 @@ final class UsageWindowTracker: ObservableObject {
         let overage = logInfo
 
         let apiData = apiClient?.latestData
-        let apiIsFresh = apiData.map { Date().timeIntervalSince($0.fetchedAt) < 240 } ?? false
+        let apiIsFresh = apiData.map { Date().timeIntervalSince($0.fetchedAt) < 30 } ?? false
 
         // API data overrides log/session data when fresh
         let fiveHourUtil: Double?
@@ -325,7 +325,7 @@ final class UsageWindowTracker: ObservableObject {
 
     private func evaluateFromTokens(now: Date) {
         let apiData = apiClient?.latestData
-        let apiIsFresh = apiData.map { Date().timeIntervalSince($0.fetchedAt) < 240 } ?? false
+        let apiIsFresh = apiData.map { Date().timeIntervalSince($0.fetchedAt) < 30 } ?? false
 
         // API-sourced utilization values (used regardless of evaluation path)
         let apiUsage = apiIsFresh ? apiData?.usage : nil

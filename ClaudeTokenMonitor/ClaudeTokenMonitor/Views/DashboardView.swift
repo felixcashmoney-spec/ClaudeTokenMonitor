@@ -85,7 +85,7 @@ struct UsageLimitsCard: View {
 
                 // Next API update
                 if let freshness = window.apiDataFreshness {
-                    let nextUpdate = freshness.addingTimeInterval(120)
+                    let nextUpdate = freshness.addingTimeInterval(15)
                     Divider().padding(.vertical, 6)
                     HStack {
                         Image(systemName: "arrow.clockwise")
@@ -243,52 +243,6 @@ struct CreditsCard: View {
     }
 }
 
-// MARK: - Token Stats Section
-
-struct TokenStatsSection: View {
-    let totalAll: Int
-    let totalInput: Int
-    let totalOutput: Int
-    let totalCache: Int
-    let estimatedCost: Double
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack(spacing: 8) {
-                statCard("Gesamt", value: TokenFormatter.format(totalAll), color: .primary)
-                statCard("Input", value: TokenFormatter.format(totalInput), color: .blue)
-                statCard("Output", value: TokenFormatter.format(totalOutput), color: .green)
-                statCard("Cache", value: TokenFormatter.format(totalCache), color: .orange)
-            }
-
-            HStack {
-                Image(systemName: "dollarsign.circle")
-                    .font(.system(size: 10))
-                    .foregroundStyle(.tertiary)
-                Text("API-Wert: ~$\(String(format: "%.2f", estimatedCost))")
-                    .font(.system(size: 10).monospacedDigit())
-                    .foregroundStyle(.tertiary)
-                Text("(Sonnet 4)")
-                    .font(.system(size: 9))
-                    .foregroundStyle(.quaternary)
-            }
-        }
-    }
-
-    private func statCard(_ title: String, value: String, color: Color) -> some View {
-        VStack(spacing: 2) {
-            Text(value)
-                .font(.callout.weight(.semibold).monospacedDigit())
-                .foregroundStyle(color)
-            Text(title)
-                .font(.system(size: 10))
-                .foregroundStyle(.secondary)
-        }
-        .frame(maxWidth: .infinity)
-        .padding(.vertical, 6)
-        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 8))
-    }
-}
 
 // MARK: - Project Breakdown
 
@@ -412,17 +366,7 @@ struct DashboardView: View {
         return allTokenRecords.filter { $0.timestamp >= cutoff }
     }
 
-    private var totalInput: Int { filteredTokenRecords.reduce(0) { $0 + $1.inputTokens } }
-    private var totalOutput: Int { filteredTokenRecords.reduce(0) { $0 + $1.outputTokens } }
-    private var totalCache: Int { filteredTokenRecords.reduce(0) { $0 + $1.cacheCreationInputTokens + $1.cacheReadInputTokens } }
     private var totalAll: Int { filteredTokenRecords.reduce(0) { $0 + $1.totalTokens } }
-
-    private var estimatedCost: Double {
-        let cacheCreation = filteredTokenRecords.reduce(0) { $0 + $1.cacheCreationInputTokens }
-        let cacheRead = filteredTokenRecords.reduce(0) { $0 + $1.cacheReadInputTokens }
-        return (Double(totalInput) * 3.0 + Double(totalOutput) * 15.0
-            + Double(cacheCreation) * 3.75 + Double(cacheRead) * 0.30) / 1_000_000
-    }
 
     private var projectBreakdown: [(name: String, tokens: Int)] {
         var byProject: [String: Int] = [:]
@@ -468,16 +412,6 @@ struct DashboardView: View {
                 UsageLimitsCard(window: usageTracker.currentWindow)
                 CreditsCard(window: usageTracker.currentWindow)
 
-                // Token stats
-                sectionHeader("Token-Verbrauch", icon: "number")
-                TokenStatsSection(
-                    totalAll: totalAll,
-                    totalInput: totalInput,
-                    totalOutput: totalOutput,
-                    totalCache: totalCache,
-                    estimatedCost: estimatedCost
-                )
-
                 // Budget
                 if case .noBudget = budgetState {} else {
                     BudgetBanner(
@@ -508,7 +442,7 @@ struct DashboardView: View {
             }
             .padding(14)
         }
-        .frame(width: 380, height: 460)
+        .frame(width: 380, height: 380)
         .environment(\.locale, Locale(identifier: "de_DE"))
     }
 

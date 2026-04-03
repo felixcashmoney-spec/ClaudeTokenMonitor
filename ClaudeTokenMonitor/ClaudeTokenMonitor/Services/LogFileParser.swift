@@ -47,7 +47,7 @@ final class LogFileParser: ObservableObject {
         // Initial full parse to find the most recent entry
         parseLogFile(fullScan: true)
 
-        timer = Timer.scheduledTimer(withTimeInterval: 30.0, repeats: true) { [weak self] _ in
+        timer = Timer.scheduledTimer(withTimeInterval: 15.0, repeats: true) { [weak self] _ in
             Task { @MainActor in
                 self?.parseLogFile(fullScan: false)
             }
