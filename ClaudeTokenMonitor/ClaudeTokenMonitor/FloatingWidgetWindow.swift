@@ -92,9 +92,24 @@ final class FloatingWidgetWindow {
             forName: NSWindow.didMoveNotification,
             object: p,
             queue: .main
-        ) { [weak p] _ in
-            guard let origin = p?.frame.origin else { return }
-            UserDefaults.standard.set(NSStringFromPoint(origin), forKey: kPositionKey)
+        ) { [weak self, weak p] _ in
+            guard let self, let p else { return }
+            let clamped = self.clampToScreen(p.frame.origin, size: p.frame.size)
+            if clamped != p.frame.origin {
+                p.setFrameOrigin(clamped)
+            }
+            UserDefaults.standard.set(NSStringFromPoint(p.frame.origin), forKey: kPositionKey)
+        }
+
+        NotificationCenter.default.addObserver(
+            forName: NSApplication.didChangeScreenParametersNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self, weak p] _ in
+            guard let self, let p else { return }
+            let clamped = self.clampToScreen(p.frame.origin, size: p.frame.size)
+            p.setFrameOrigin(clamped)
+            UserDefaults.standard.set(NSStringFromPoint(clamped), forKey: kPositionKey)
         }
 
         expandState.onResize = { [weak self] expanded in
@@ -122,10 +137,41 @@ final class FloatingWidgetWindow {
     private func restoredOrigin() -> NSPoint {
         if let saved = UserDefaults.standard.string(forKey: kPositionKey) {
             let pt = NSPointFromString(saved)
-            if pt != .zero { return pt }
+            if pt != .zero {
+                // Validate that the saved position is within a current screen's visibleFrame
+                let isOnScreen = NSScreen.screens.contains { screen in
+                    let vf = screen.visibleFrame
+                    return vf.contains(pt)
+                }
+                if isOnScreen {
+                    return clampToScreen(pt, size: collapsedSize)
+                }
+            }
         }
+        return defaultOrigin()
+    }
+
+    private func defaultOrigin() -> NSPoint {
         guard let screen = NSScreen.main else { return NSPoint(x: 100, y: 100) }
-        let f = screen.frame
-        return NSPoint(x: f.maxX - collapsedSize.width - 120, y: f.maxY - collapsedSize.height)
+        let vf = screen.visibleFrame
+        return NSPoint(
+            x: vf.maxX - collapsedSize.width - 16,
+            y: vf.maxY - collapsedSize.height - 8
+        )
+    }
+
+    /// Clamps `origin` so that a rect of `size` at `origin` stays within the nearest screen's visibleFrame.
+    private func clampToScreen(_ origin: NSPoint, size: NSSize) -> NSPoint {
+        // Pick the screen whose visibleFrame best overlaps the widget rect
+        let widgetRect = NSRect(origin: origin, size: size)
+        let screen = NSScreen.screens.max(by: {
+            widgetRect.intersection($0.visibleFrame).width * widgetRect.intersection($0.visibleFrame).height <
+            widgetRect.intersection($1.visibleFrame).width * widgetRect.intersection($1.visibleFrame).height
+        }) ?? NSScreen.main ?? NSScreen.screens.first
+        guard let vf = screen?.visibleFrame else { return origin }
+
+        let x = min(max(origin.x, vf.minX), vf.maxX - size.width)
+        let y = min(max(origin.y, vf.minY), vf.maxY - size.height)
+        return NSPoint(x: x, y: y)
     }
 }
