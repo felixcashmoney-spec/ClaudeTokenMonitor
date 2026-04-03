@@ -3,7 +3,20 @@ import SwiftUI
 
 private let kPositionKey = "floatingWidgetPosition"
 
-// MARK: - Draggable NSPanel subclass
+// MARK: - Shared expand state
+
+@MainActor
+final class WidgetExpandState: ObservableObject {
+    @Published var isExpanded = false
+    var onResize: ((Bool) -> Void)?
+
+    func toggle() {
+        isExpanded.toggle()
+        onResize?(isExpanded)
+    }
+}
+
+// MARK: - Non-activating Panel
 
 private final class FloatingPanel: NSPanel {
     override var canBecomeKey: Bool { false }
@@ -13,20 +26,21 @@ private final class FloatingPanel: NSPanel {
 // MARK: - Window Controller
 
 @MainActor
-final class FloatingWidgetWindow: NSObject {
+final class FloatingWidgetWindow {
 
     private var panel: FloatingPanel?
-    private weak var tracker: UsageWindowTracker?
+    private let tracker: UsageWindowTracker
+    private let expandState = WidgetExpandState()
+
+    private let collapsedSize = NSSize(width: 300, height: 44)
+    private let expandedSize = NSSize(width: 300, height: 250)
 
     init(tracker: UsageWindowTracker) {
         self.tracker = tracker
-        super.init()
     }
 
     func show() {
-        if panel == nil {
-            buildPanel()
-        }
+        if panel == nil { buildPanel() }
         panel?.orderFront(nil)
     }
 
@@ -34,69 +48,84 @@ final class FloatingWidgetWindow: NSObject {
         panel?.orderOut(nil)
     }
 
-    // MARK: - Private
+    /// Animates the panel alpha to 0, then calls completion on the main thread.
+    func fadeOut(completion: @escaping () -> Void) {
+        guard let p = panel else {
+            completion()
+            return
+        }
+        NSAnimationContext.runAnimationGroup({ ctx in
+            ctx.duration = 0.25
+            ctx.timingFunction = CAMediaTimingFunction(name: .easeIn)
+            p.animator().alphaValue = 0.0
+        }, completionHandler: {
+            completion()
+        })
+    }
 
     private func buildPanel() {
-        guard let tracker else { return }
-
-        let contentView = FloatingWidgetView()
+        let rootView = FloatingWidgetView()
             .environmentObject(tracker)
+            .environmentObject(expandState)
 
-        let hosting = NSHostingView(rootView: contentView)
-        hosting.translatesAutoresizingMaskIntoConstraints = false
-
-        // Size: let SwiftUI compute natural size first
-        let naturalSize = hosting.fittingSize
-        let panelWidth = max(naturalSize.width, 200)
-        let panelHeight = max(naturalSize.height, 36)
+        let hosting = NSHostingView(rootView: rootView)
+        hosting.frame = NSRect(origin: .zero, size: collapsedSize)
 
         let p = FloatingPanel(
-            contentRect: NSRect(x: 0, y: 0, width: panelWidth, height: panelHeight),
+            contentRect: NSRect(origin: .zero, size: collapsedSize),
             styleMask: [.borderless, .nonactivatingPanel],
             backing: .buffered,
-            defer: true
+            defer: false
         )
-        p.level = .floating
+        p.level = .statusBar
         p.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .stationary]
         p.isMovableByWindowBackground = true
         p.backgroundColor = .clear
         p.isOpaque = false
-        p.hasShadow = false          // we apply shadow in SwiftUI via .shadow() modifier
+        p.hasShadow = false
         p.hidesOnDeactivate = false
         p.contentView = hosting
 
-        // Restore or default position
-        p.setFrameOrigin(restoredOrigin(for: NSSize(width: panelWidth, height: panelHeight)))
+        p.setFrameOrigin(restoredOrigin())
 
-        // Observe window-moved notifications to persist position
         NotificationCenter.default.addObserver(
-            self,
-            selector: #selector(windowMoved(_:)),
-            name: NSWindow.didMoveNotification,
-            object: p
-        )
+            forName: NSWindow.didMoveNotification,
+            object: p,
+            queue: .main
+        ) { [weak p] _ in
+            guard let origin = p?.frame.origin else { return }
+            UserDefaults.standard.set(NSStringFromPoint(origin), forKey: kPositionKey)
+        }
+
+        expandState.onResize = { [weak self] expanded in
+            self?.resizePanel(expanded: expanded)
+        }
 
         panel = p
     }
 
-    private func restoredOrigin(for size: NSSize) -> NSPoint {
-        if let saved = UserDefaults.standard.string(forKey: kPositionKey) {
-            let pt = NSPointFromString(saved)
-            if pt != .zero {
-                return pt
-            }
+    private func resizePanel(expanded: Bool) {
+        guard let p = panel else { return }
+        let newSize = expanded ? expandedSize : collapsedSize
+        let oldFrame = p.frame
+        // Keep top-right corner fixed: grow/shrink downward
+        let newY = oldFrame.maxY - newSize.height
+        let newFrame = NSRect(x: oldFrame.origin.x, y: newY, width: newSize.width, height: newSize.height)
+
+        NSAnimationContext.runAnimationGroup { ctx in
+            ctx.duration = 0.3
+            ctx.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
+            p.animator().setFrame(newFrame, display: true)
         }
-        // Default: top-right of main screen with 20pt margin
-        guard let screen = NSScreen.main else { return NSPoint(x: 100, y: 100) }
-        let visibleFrame = screen.visibleFrame
-        let x = visibleFrame.maxX - size.width - 20
-        let y = visibleFrame.maxY - size.height - 20
-        return NSPoint(x: x, y: y)
     }
 
-    @objc private func windowMoved(_ notification: Notification) {
-        guard let p = panel else { return }
-        let origin = p.frame.origin
-        UserDefaults.standard.set(NSStringFromPoint(origin), forKey: kPositionKey)
+    private func restoredOrigin() -> NSPoint {
+        if let saved = UserDefaults.standard.string(forKey: kPositionKey) {
+            let pt = NSPointFromString(saved)
+            if pt != .zero { return pt }
+        }
+        guard let screen = NSScreen.main else { return NSPoint(x: 100, y: 100) }
+        let f = screen.frame
+        return NSPoint(x: f.maxX - collapsedSize.width - 120, y: f.maxY - collapsedSize.height)
     }
 }
