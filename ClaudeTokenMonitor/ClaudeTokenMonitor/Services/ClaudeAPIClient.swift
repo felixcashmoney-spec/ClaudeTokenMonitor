@@ -13,8 +13,8 @@ struct UsageResponse: Codable {
 }
 
 struct WindowResponse: Codable {
-    let utilization: Int  // 0-100 integer
-    let resets_at: String // ISO 8601 date
+    let utilization: Double  // 0-100 (Double for robustness — API may return int or float)
+    let resets_at: String    // ISO 8601 date
 }
 
 struct ExtraUsageResponse: Codable {

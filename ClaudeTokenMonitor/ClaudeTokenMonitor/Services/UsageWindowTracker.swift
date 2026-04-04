@@ -137,7 +137,7 @@ final class UsageWindowTracker: ObservableObject {
 
         let apiData = apiClient?.latestData
         let apiAge = apiData.map { now.timeIntervalSince($0.fetchedAt) }
-        trackerLog.debug("evaluate: logIsFresh=\(logIsFresh), logUtil7d=\(logInfo?.sevenDayWindow.utilization ?? -1), apiUsage=\(apiData?.usage != nil), apiAge=\(apiAge ?? -1)s, api5h=\(apiData?.usage?.five_hour.utilization ?? -1), api7d=\(apiData?.usage?.seven_day.utilization ?? -1)")
+        trackerLog.debug("evaluate: logIsFresh=\(logIsFresh), logUtil7d=\(logInfo?.sevenDayWindow.utilization ?? -1), apiUsage=\(apiData?.usage != nil), apiAge=\(apiAge ?? -1)s, api5h=\(apiData?.usage?.five_hour.utilization ?? -1.0), api7d=\(apiData?.usage?.seven_day.utilization ?? -1.0)")
 
         if logIsFresh, let logInfo {
             evaluateFromLogData(logInfo, sessionResetInfo: sessionResetInfo, now: now)
@@ -212,7 +212,7 @@ final class UsageWindowTracker: ObservableObject {
         // When API data is fresh, prefer its utilization values (authoritative from claude.ai)
         let fiveHourUtil: Double
         if apiIsFresh, let apiUtil = apiData?.usage?.five_hour.utilization {
-            fiveHourUtil = Double(apiUtil) / 100.0
+            fiveHourUtil = apiUtil / 100.0
         } else {
             fiveHourUtil = isLimited ? max(fiveHour.utilization, 1.0) : fiveHour.utilization
         }
@@ -227,7 +227,7 @@ final class UsageWindowTracker: ObservableObject {
 
         let sevenDayUtil: Double
         if apiIsFresh, let apiUtil7d = apiData?.usage?.seven_day.utilization {
-            sevenDayUtil = Double(apiUtil7d) / 100.0
+            sevenDayUtil = apiUtil7d / 100.0
         } else {
             sevenDayUtil = sevenDay.utilization
         }
@@ -274,14 +274,14 @@ final class UsageWindowTracker: ObservableObject {
         // API data overrides log/session data when fresh
         let fiveHourUtil: Double?
         if apiIsFresh, let apiUtil = apiData?.usage?.five_hour.utilization {
-            fiveHourUtil = Double(apiUtil) / 100.0
+            fiveHourUtil = apiUtil / 100.0
         } else {
             fiveHourUtil = isLimited ? 1.0 : nil
         }
 
         let sevenDayUtil: Double?
         if apiIsFresh, let apiUtil7d = apiData?.usage?.seven_day.utilization {
-            sevenDayUtil = Double(apiUtil7d) / 100.0
+            sevenDayUtil = apiUtil7d / 100.0
         } else {
             sevenDayUtil = sevenDay?.utilization
         }
@@ -329,8 +329,8 @@ final class UsageWindowTracker: ObservableObject {
 
         // API-sourced utilization values (used regardless of evaluation path)
         let apiUsage = apiIsFresh ? apiData?.usage : nil
-        let api5hUtil: Double? = apiUsage.map { Double($0.five_hour.utilization) / 100.0 }
-        let api7dUtil: Double? = apiUsage.map { Double($0.seven_day.utilization) / 100.0 }
+        let api5hUtil: Double? = apiUsage.map { $0.five_hour.utilization / 100.0 }
+        let api7dUtil: Double? = apiUsage.map { $0.seven_day.utilization / 100.0 }
         let api5hReset: Date? = apiUsage.flatMap { Self.isoFormatter.date(from: $0.five_hour.resets_at) }
         let api7dReset: Date? = apiUsage.flatMap { Self.isoFormatter.date(from: $0.seven_day.resets_at) }
 

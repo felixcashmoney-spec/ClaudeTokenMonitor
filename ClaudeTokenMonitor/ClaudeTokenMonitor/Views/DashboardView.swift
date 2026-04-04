@@ -16,15 +16,7 @@ enum TimeFilter: String, CaseIterable {
     }
 }
 
-// MARK: - Helper formatters
 
-private func formatEUR(cents: Int) -> String {
-    let formatter = NumberFormatter()
-    formatter.numberStyle = .currency
-    formatter.currencyCode = "EUR"
-    formatter.locale = Locale(identifier: "de_DE")
-    return formatter.string(from: NSNumber(value: Double(cents) / 100.0)) ?? "\(Double(cents) / 100.0) EUR"
-}
 
 private func formatResetDate(_ date: Date) -> String {
     let cal = Calendar.current
@@ -45,204 +37,6 @@ private func formatResetDate(_ date: Date) -> String {
         return f.string(from: date)
     }
 }
-
-// MARK: - Usage Limits Section
-
-struct UsageLimitsCard: View {
-    let window: UsageWindow?
-
-    var body: some View {
-        if let window, window.fiveHourUtilization != nil || window.sevenDayUtilization != nil || window.learnedLimit != nil {
-            VStack(alignment: .leading, spacing: 0) {
-                // 5h window
-                if window.fiveHourUtilization != nil || window.learnedLimit != nil {
-                    usageRow(
-                        icon: "bolt.fill",
-                        label: "Aktuelle Sitzung (5h)",
-                        utilization: window.fiveHourUtilization,
-                        tokensUsed: window.tokensUsed,
-                        learnedLimit: window.learnedLimit,
-                        resetTime: window.fiveHourResetTime,
-                        isLimited: window.isLimited
-                    )
-                }
-
-                // 7d window
-                if let util7d = window.sevenDayUtilization {
-                    if window.fiveHourUtilization != nil || window.learnedLimit != nil {
-                        Divider().padding(.vertical, 8)
-                    }
-                    usageRow(
-                        icon: "calendar",
-                        label: "Wöchentlich (7 Tage)",
-                        utilization: util7d,
-                        tokensUsed: nil,
-                        learnedLimit: nil,
-                        resetTime: window.sevenDayResetTime,
-                        isLimited: window.sevenDayStatus == "exceeded_limit"
-                    )
-                }
-
-                // Next API update
-                if let freshness = window.apiDataFreshness {
-                    let nextUpdate = freshness.addingTimeInterval(15)
-                    Divider().padding(.vertical, 6)
-                    HStack {
-                        Image(systemName: "arrow.clockwise")
-                            .font(.system(size: 8))
-                            .foregroundStyle(.tertiary)
-                        Text("Nächste Aktualisierung \(nextUpdate, style: .relative)")
-                            .font(.system(size: 9))
-                            .foregroundStyle(.tertiary)
-                    }
-                }
-            }
-            .padding(12)
-            .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 10))
-        } else {
-            HStack(spacing: 8) {
-                Image(systemName: "gauge.with.dots.needle.33percent")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                Text("Noch keine Nutzungsdaten verfügbar")
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
-            }
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(12)
-            .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 10))
-        }
-    }
-
-    @ViewBuilder
-    private func usageRow(
-        icon: String,
-        label: String,
-        utilization: Double?,
-        tokensUsed: Int?,
-        learnedLimit: Int?,
-        resetTime: Date?,
-        isLimited: Bool
-    ) -> some View {
-        let percent = utilization.map { min(1.0, $0) } ?? {
-            guard let used = tokensUsed, let limit = learnedLimit, limit > 0 else { return 0.0 }
-            return min(1.0, Double(used) / Double(limit))
-        }()
-        let color: Color = isLimited ? .red : (percent > 0.8 ? .orange : (percent > 0.5 ? .yellow : .blue))
-
-        VStack(alignment: .leading, spacing: 6) {
-            HStack {
-                Image(systemName: icon)
-                    .font(.caption2)
-                    .foregroundStyle(color)
-                    .frame(width: 14)
-                Text(label)
-                    .font(.caption.weight(.medium))
-                Spacer()
-                Text("\(Int((utilization ?? percent) * 100))%")
-                    .font(.callout.weight(.semibold).monospacedDigit())
-                    .foregroundStyle(color)
-            }
-
-            // Progress bar
-            GeometryReader { geo in
-                ZStack(alignment: .leading) {
-                    RoundedRectangle(cornerRadius: 3)
-                        .fill(color.opacity(0.15))
-                    RoundedRectangle(cornerRadius: 3)
-                        .fill(color)
-                        .frame(width: geo.size.width * percent)
-                }
-            }
-            .frame(height: 6)
-
-            // Reset info
-            if let reset = resetTime {
-                Text("Zurücksetzung \(formatResetDate(reset))")
-                    .font(.system(size: 10))
-                    .foregroundStyle(.secondary)
-            }
-        }
-    }
-}
-
-// MARK: - Credits & Spending Section
-
-struct CreditsCard: View {
-    let window: UsageWindow?
-
-    var body: some View {
-        if let window, let balance = window.creditBalanceCents {
-            VStack(alignment: .leading, spacing: 8) {
-                // Balance
-                HStack(alignment: .firstTextBaseline) {
-                    Text(formatEUR(cents: balance))
-                        .font(.title2.weight(.bold).monospacedDigit())
-                        .foregroundStyle(balance > 0 ? .green : .red)
-                    Text("Guthaben")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                    Spacer()
-                    if window.extraUsageEnabled == true {
-                        Image(systemName: "bolt.circle.fill")
-                            .font(.caption)
-                            .foregroundStyle(.blue)
-                    }
-                }
-
-                if let spent = window.extraUsageSpentCents, window.extraUsageEnabled == true {
-                    Divider()
-                    HStack {
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text("Ausgegeben")
-                                .font(.system(size: 10))
-                                .foregroundStyle(.secondary)
-                            Text(formatEUR(cents: spent))
-                                .font(.caption.weight(.semibold).monospacedDigit())
-                                .foregroundStyle(spent > 0 ? .orange : .secondary)
-                        }
-                        Spacer()
-                        VStack(alignment: .trailing, spacing: 2) {
-                            Text("Monatslimit")
-                                .font(.system(size: 10))
-                                .foregroundStyle(.secondary)
-                            if let limit = window.extraUsageMonthlyLimitCents {
-                                Text(formatEUR(cents: limit))
-                                    .font(.caption.weight(.semibold).monospacedDigit())
-                            } else {
-                                Text("Unbegrenzt")
-                                    .font(.caption)
-                                    .foregroundStyle(.secondary)
-                            }
-                        }
-                    }
-                } else if window.extraUsageEnabled == false {
-                    HStack(spacing: 4) {
-                        Image(systemName: "xmark.circle")
-                            .font(.system(size: 10))
-                        Text("Extra Usage nicht aktiviert")
-                            .font(.system(size: 10))
-                    }
-                    .foregroundStyle(.secondary)
-                }
-            }
-            .padding(12)
-            .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 10))
-        } else if let window, let reason = window.overageDisabledReason {
-            HStack(spacing: 6) {
-                Image(systemName: reason == "out_of_credits" ? "exclamationmark.triangle.fill" : "xmark.circle")
-                    .foregroundStyle(reason == "out_of_credits" ? .orange : .secondary)
-                Text(reason == "out_of_credits" ? "Guthaben aufgebraucht" : "Extra Usage nicht aktiviert")
-                    .font(.caption)
-                    .foregroundStyle(reason == "out_of_credits" ? .orange : .secondary)
-            }
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(12)
-            .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 10))
-        }
-    }
-}
-
 
 // MARK: - Project Breakdown
 
@@ -407,10 +201,9 @@ struct DashboardView: View {
                     .frame(width: 170)
                 }
 
-                // Usage limits + Credits side by side or stacked
+                // Usage Limits
                 sectionHeader("Nutzungslimits", icon: "chart.bar.xaxis")
                 UsageLimitsCard(window: usageTracker.currentWindow)
-                CreditsCard(window: usageTracker.currentWindow)
 
                 // Budget
                 if case .noBudget = budgetState {} else {
@@ -456,5 +249,120 @@ struct DashboardView: View {
                 .foregroundStyle(.secondary)
         }
         .padding(.top, 2)
+    }
+}
+
+// MARK: - Usage Limits Card
+
+struct UsageLimitsCard: View {
+    let window: UsageWindow?
+    
+    var body: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            
+            // 5h Usage
+            VStack(alignment: .leading, spacing: 4) {
+                HStack {
+                    Image(systemName: "bolt.fill")
+                        .foregroundStyle(.red)
+                        .font(.system(size: 10))
+                    Text("Aktuelle Sitzung (5h)")
+                        .font(.system(size: 11, weight: .medium))
+                    Spacer()
+                    let util5h = window?.fiveHourUtilization ?? 0
+                    Text("\(Int(util5h * 100))%")
+                        .font(.system(size: 11, weight: .bold))
+                        .foregroundStyle(util5h > 0.8 ? .red : .primary)
+                }
+                
+                GeometryReader { geo in
+                    ZStack(alignment: .leading) {
+                        RoundedRectangle(cornerRadius: 2)
+                            .fill(Color.white.opacity(0.1))
+                        RoundedRectangle(cornerRadius: 2)
+                            .fill(Color.red)
+                            .frame(width: geo.size.width * min(window?.fiveHourUtilization ?? 0, 1.0))
+                    }
+                }
+                .frame(height: 4)
+                
+                if let reset = window?.fiveHourResetTime {
+                    Text("Auffüllung \(formatResetDate(reset))")
+                        .font(.system(size: 9))
+                        .foregroundStyle(.secondary)
+                }
+            }
+            
+            // 7d Usage
+            VStack(alignment: .leading, spacing: 4) {
+                HStack {
+                    Image(systemName: "calendar")
+                        .foregroundStyle(.red)
+                        .font(.system(size: 10))
+                    Text("Wöchentlich (7 Tage)")
+                        .font(.system(size: 11, weight: .medium))
+                    Spacer()
+                    let util7d = window?.sevenDayUtilization ?? 0
+                    Text("\(Int(util7d * 100))%")
+                        .font(.system(size: 11, weight: .bold))
+                        .foregroundStyle(util7d > 0.8 ? .red : .primary)
+                }
+                
+                GeometryReader { geo in
+                    ZStack(alignment: .leading) {
+                        RoundedRectangle(cornerRadius: 2)
+                            .fill(Color.white.opacity(0.1))
+                        RoundedRectangle(cornerRadius: 2)
+                            .fill(Color.red)
+                            .frame(width: geo.size.width * min(window?.sevenDayUtilization ?? 0, 1.0))
+                    }
+                }
+                .frame(height: 4)
+                
+                if let reset = window?.sevenDayResetTime {
+                    Text("Auffüllung \(formatResetDate(reset))")
+                        .font(.system(size: 9))
+                        .foregroundStyle(.secondary)
+                }
+            }
+            
+            Divider().opacity(0.5)
+            
+            // Extra Credit
+            if window?.extraUsageEnabled == true || window?.extraUsageMonthlyLimitCents ?? 0 > 0 {
+                let spent = window?.extraUsageSpentCents ?? 0
+                let limit = window?.extraUsageMonthlyLimitCents ?? 0
+                let eurosSpent = Double(spent) / 100.0
+                let eurosLimit = Double(limit) / 100.0
+                VStack(alignment: .leading, spacing: 4) {
+                    HStack {
+                        Text(String(format: "%.2f €", eurosSpent).replacingOccurrences(of: ".", with: ","))
+                            .font(.system(size: 14, weight: .bold))
+                            .foregroundStyle(.red)
+                        Text("Guthaben")
+                            .font(.system(size: 11, weight: .medium))
+                        Spacer()
+                        Image(systemName: "info.circle.fill")
+                            .font(.system(size: 10))
+                            .foregroundStyle(.tint)
+                    }
+                    HStack {
+                        Text("Ausgegeben")
+                        Spacer()
+                        if limit > 0 {
+                            Text(String(format: "Monatslimit %.2f €", eurosLimit).replacingOccurrences(of: ".", with: ","))
+                        } else {
+                            Text("Monatslimit")
+                        }
+                    }
+                    .font(.system(size: 9))
+                    .foregroundStyle(.secondary)
+                }
+            }
+            
+        }
+        .padding(12)
+        .background(Color.white.opacity(0.04))
+        .clipShape(RoundedRectangle(cornerRadius: 8))
     }
 }
