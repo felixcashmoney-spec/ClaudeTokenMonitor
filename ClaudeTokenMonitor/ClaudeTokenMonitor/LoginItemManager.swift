@@ -1,10 +1,12 @@
 import Foundation
 import ServiceManagement
+import os.log
 
 @MainActor
 final class LoginItemManager: ObservableObject {
 
     @Published private(set) var isEnabled: Bool = false
+    private let logger = Logger(subsystem: "com.claudetokenmonitor", category: "LoginItemManager")
 
     init() {
         refresh()
@@ -26,7 +28,7 @@ final class LoginItemManager: ObservableObject {
             refresh()
         } catch {
             // Surface error to console; UI observes isEnabled which reflects actual state.
-            print("[LoginItemManager] Failed to toggle Login Item: \(error)")
+            logger.error("Failed to toggle Login Item: \(error.localizedDescription)")
             refresh()
         }
     }

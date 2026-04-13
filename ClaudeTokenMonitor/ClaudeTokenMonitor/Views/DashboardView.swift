@@ -16,6 +16,286 @@ enum TimeFilter: String, CaseIterable {
     }
 }
 
+// MARK: - Helper formatters
+
+private func formatEUR(cents: Int) -> String {
+    let formatter = NumberFormatter()
+    formatter.numberStyle = .currency
+    formatter.currencyCode = "EUR"
+    formatter.locale = Locale(identifier: "de_DE")
+    return formatter.string(from: NSNumber(value: Double(cents) / 100.0)) ?? "\(Double(cents) / 100.0) EUR"
+}
+
+private func formatResetDate(_ date: Date) -> String {
+    let cal = Calendar.current
+    if cal.isDateInToday(date) {
+        let f = DateFormatter()
+        f.locale = Locale(identifier: "de_DE")
+        f.dateFormat = "'heute,' HH:mm"
+        return f.string(from: date)
+    } else if cal.isDateInTomorrow(date) {
+        let f = DateFormatter()
+        f.locale = Locale(identifier: "de_DE")
+        f.dateFormat = "'morgen,' HH:mm"
+        return f.string(from: date)
+    } else {
+        let f = DateFormatter()
+        f.locale = Locale(identifier: "de_DE")
+        f.dateFormat = "E., HH:mm"
+        return f.string(from: date)
+    }
+}
+
+// MARK: - Usage Limits Section
+
+struct UsageLimitsCard: View {
+    let window: UsageWindow?
+
+    var body: some View {
+        if let window, window.fiveHourUtilization != nil || window.sevenDayUtilization != nil || window.learnedLimit != nil {
+            VStack(alignment: .leading, spacing: 0) {
+                // 5h window
+                if window.fiveHourUtilization != nil || window.learnedLimit != nil {
+                    usageRow(
+                        icon: "bolt.fill",
+                        label: "Aktuelle Sitzung (5h)",
+                        utilization: window.fiveHourUtilization,
+                        tokensUsed: window.tokensUsed,
+                        learnedLimit: window.learnedLimit,
+                        resetTime: window.fiveHourResetTime,
+                        isLimited: window.isLimited
+                    )
+                }
+
+                // 7d window
+                if let util7d = window.sevenDayUtilization {
+                    if window.fiveHourUtilization != nil || window.learnedLimit != nil {
+                        Divider().padding(.vertical, 8)
+                    }
+                    usageRow(
+                        icon: "calendar",
+                        label: "Wöchentlich (7 Tage)",
+                        utilization: util7d,
+                        tokensUsed: nil,
+                        learnedLimit: nil,
+                        resetTime: window.sevenDayResetTime,
+                        isLimited: window.sevenDayStatus == "exceeded_limit"
+                    )
+                }
+
+                // Next API update
+                if let freshness = window.apiDataFreshness {
+                    let nextUpdate = freshness.addingTimeInterval(15)
+                    Divider().padding(.vertical, 6)
+                    HStack {
+                        Image(systemName: "arrow.clockwise")
+                            .font(.system(size: 8))
+                            .foregroundStyle(.tertiary)
+                        Text("Nächste Aktualisierung \(nextUpdate, style: .relative)")
+                            .font(.system(size: 9))
+                            .foregroundStyle(.tertiary)
+                    }
+                }
+            }
+            .padding(12)
+            .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 10))
+        } else {
+            HStack(spacing: 8) {
+                Image(systemName: "gauge.with.dots.needle.33percent")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                Text("Noch keine Nutzungsdaten verfügbar")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(12)
+            .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 10))
+        }
+    }
+
+    @ViewBuilder
+    private func usageRow(
+        icon: String,
+        label: String,
+        utilization: Double?,
+        tokensUsed: Int?,
+        learnedLimit: Int?,
+        resetTime: Date?,
+        isLimited: Bool
+    ) -> some View {
+        let percent = utilization.map { min(1.0, $0) } ?? {
+            guard let used = tokensUsed, let limit = learnedLimit, limit > 0 else { return 0.0 }
+            return min(1.0, Double(used) / Double(limit))
+        }()
+        let color: Color = isLimited ? .red : (percent > 0.8 ? .orange : (percent > 0.5 ? .yellow : .blue))
+
+        VStack(alignment: .leading, spacing: 6) {
+            HStack {
+                Image(systemName: icon)
+                    .font(.caption2)
+                    .foregroundStyle(color)
+                    .frame(width: 14)
+                Text(label)
+                    .font(.caption.weight(.medium))
+                Spacer()
+                Text("\(Int((utilization ?? percent) * 100))%")
+                    .font(.callout.weight(.semibold).monospacedDigit())
+                    .foregroundStyle(color)
+            }
+
+            // Progress bar
+            GeometryReader { geo in
+                ZStack(alignment: .leading) {
+                    RoundedRectangle(cornerRadius: 3)
+                        .fill(color.opacity(0.15))
+                    RoundedRectangle(cornerRadius: 3)
+                        .fill(color)
+                        .frame(width: geo.size.width * percent)
+                }
+            }
+            .frame(height: 6)
+
+            // Reset info
+            if let reset = resetTime {
+                Text("Zurücksetzung \(formatResetDate(reset))")
+                    .font(.system(size: 10))
+                    .foregroundStyle(.secondary)
+            }
+        }
+    }
+}
+
+// MARK: - Credits & Spending Section
+
+struct CreditsCard: View {
+    let window: UsageWindow?
+
+    var body: some View {
+        if let window, let balance = window.creditBalanceCents {
+            VStack(alignment: .leading, spacing: 8) {
+                // Balance
+                HStack(alignment: .firstTextBaseline) {
+                    Text(formatEUR(cents: balance))
+                        .font(.title2.weight(.bold).monospacedDigit())
+                        .foregroundStyle(balance > 0 ? .green : .red)
+                    Text("Guthaben")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    Spacer()
+                    if window.extraUsageEnabled == true {
+                        Image(systemName: "bolt.circle.fill")
+                            .font(.caption)
+                            .foregroundStyle(.blue)
+                    }
+                }
+
+                if let spent = window.extraUsageSpentCents, window.extraUsageEnabled == true {
+                    Divider()
+                    HStack {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Ausgegeben")
+                                .font(.system(size: 10))
+                                .foregroundStyle(.secondary)
+                            Text(formatEUR(cents: spent))
+                                .font(.caption.weight(.semibold).monospacedDigit())
+                                .foregroundStyle(spent > 0 ? .orange : .secondary)
+                        }
+                        Spacer()
+                        VStack(alignment: .trailing, spacing: 2) {
+                            Text("Monatslimit")
+                                .font(.system(size: 10))
+                                .foregroundStyle(.secondary)
+                            if let limit = window.extraUsageMonthlyLimitCents {
+                                Text(formatEUR(cents: limit))
+                                    .font(.caption.weight(.semibold).monospacedDigit())
+                            } else {
+                                Text("Unbegrenzt")
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                            }
+                        }
+                    }
+                } else if window.extraUsageEnabled == false {
+                    HStack(spacing: 4) {
+                        Image(systemName: "xmark.circle")
+                            .font(.system(size: 10))
+                        Text("Extra Usage nicht aktiviert")
+                            .font(.system(size: 10))
+                    }
+                    .foregroundStyle(.secondary)
+                }
+            }
+            .padding(12)
+            .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 10))
+        } else if let window, let reason = window.overageDisabledReason {
+            HStack(spacing: 6) {
+                Image(systemName: reason == "out_of_credits" ? "exclamationmark.triangle.fill" : "xmark.circle")
+                    .foregroundStyle(reason == "out_of_credits" ? .orange : .secondary)
+                Text(reason == "out_of_credits" ? "Guthaben aufgebraucht" : "Extra Usage nicht aktiviert")
+                    .font(.caption)
+                    .foregroundStyle(reason == "out_of_credits" ? .orange : .secondary)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(12)
+            .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 10))
+        }
+    }
+}
+
+
+// MARK: - Project Breakdown
+
+struct ProjectBreakdownSection: View {
+    let projects: [(name: String, tokens: Int)]
+    let totalTokens: Int
+
+    var body: some View {
+        if projects.isEmpty {
+            Text("Keine Daten")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .frame(maxWidth: .infinity, alignment: .center)
+                .padding(.vertical, 4)
+        } else {
+            VStack(spacing: 6) {
+                ForEach(projects, id: \.name) { project in
+                    let fraction = totalTokens > 0 ? Double(project.tokens) / Double(totalTokens) : 0
+                    HStack(spacing: 8) {
+                        Image(systemName: "folder.fill")
+                            .font(.system(size: 10))
+                            .foregroundStyle(.tint)
+                            .frame(width: 14)
+                        Text(project.name)
+                            .font(.caption)
+                            .lineLimit(1)
+                        Spacer()
+                        Text(TokenFormatter.format(project.tokens))
+                            .font(.caption.monospacedDigit())
+                            .foregroundStyle(.secondary)
+                        Text("\(Int(fraction * 100))%")
+                            .font(.caption2.monospacedDigit())
+                            .foregroundStyle(.tertiary)
+                            .frame(width: 28, alignment: .trailing)
+                    }
+                    GeometryReader { geo in
+                        ZStack(alignment: .leading) {
+                            RoundedRectangle(cornerRadius: 2)
+                                .fill(.quaternary)
+                            RoundedRectangle(cornerRadius: 2)
+                                .fill(.tint)
+                                .frame(width: geo.size.width * fraction)
+                        }
+                    }
+                    .frame(height: 3)
+                }
+            }
+        }
+    }
+}
+
+// MARK: - Budget Banner
+
 struct BudgetBanner: View {
     let state: BudgetState
     let currentTokens: Int
@@ -40,14 +320,11 @@ struct BudgetBanner: View {
     private func budgetBar(percent: Double, color: Color) -> some View {
         VStack(alignment: .leading, spacing: 4) {
             HStack {
-                Text("Budget")
+                Text("Monatsbudget")
                     .font(.caption.weight(.medium))
                 Spacer()
-                Text("\(TokenFormatter.format(currentTokens)) / \(TokenFormatter.format(budget))")
-                    .font(.caption.monospacedDigit())
-                    .foregroundStyle(.secondary)
-                Text("(\(Int(percent * 100))%)")
-                    .font(.caption.monospacedDigit())
+                Text("\(Int(percent * 100))%")
+                    .font(.caption.weight(.semibold).monospacedDigit())
                     .foregroundStyle(color)
             }
             GeometryReader { geo in
@@ -60,13 +337,22 @@ struct BudgetBanner: View {
                 }
             }
             .frame(height: 6)
+            Text("\(TokenFormatter.format(currentTokens)) / \(TokenFormatter.format(budget))")
+                .font(.system(size: 10).monospacedDigit())
+                .foregroundStyle(.secondary)
         }
+        .padding(12)
+        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 10))
     }
 }
 
+// MARK: - Dashboard View
+
 struct DashboardView: View {
     @Query private var sessions: [Session]
+    @Query private var allTokenRecords: [TokenRecord]
     @Query private var budgetSettings: [BudgetSettings]
+    @EnvironmentObject private var usageTracker: UsageWindowTracker
     @Environment(\.modelContext) private var modelContext
     @State private var timeFilter: TimeFilter = .today
 
@@ -75,47 +361,30 @@ struct DashboardView: View {
         return sessions.filter { $0.lastActivityAt >= cutoff }
     }
 
-    private var totalInput: Int {
-        filteredSessions.reduce(0) { $0 + $1.totalInputTokens }
+    private var filteredTokenRecords: [TokenRecord] {
+        let cutoff = timeFilter.startDate
+        return allTokenRecords.filter { $0.timestamp >= cutoff }
     }
 
-    private var totalOutput: Int {
-        filteredSessions.reduce(0) { $0 + $1.totalOutputTokens }
-    }
-
-    private var totalCache: Int {
-        filteredSessions.reduce(0) { $0 + $1.totalCacheCreationTokens + $1.totalCacheReadTokens }
-    }
-
-    private var totalAll: Int {
-        filteredSessions.reduce(0) { $0 + $1.totalTokens }
-    }
+    private var totalAll: Int { filteredTokenRecords.reduce(0) { $0 + $1.totalTokens } }
 
     private var projectBreakdown: [(name: String, tokens: Int)] {
         var byProject: [String: Int] = [:]
-        for session in filteredSessions {
-            byProject[session.projectName, default: 0] += session.totalTokens
+        for record in filteredTokenRecords {
+            let name = record.session?.projectName ?? "Unknown"
+            byProject[name, default: 0] += record.totalTokens
         }
         return byProject.sorted { $0.value > $1.value }.map { (name: $0.key, tokens: $0.value) }
-    }
-
-    private var rateLimitEvents: Int {
-        filteredSessions.reduce(0) { total, session in
-            total + session.tokenRecords.filter { $0.isRateLimited && $0.timestamp >= timeFilter.startDate }.count
-        }
     }
 
     private var monthlyTokens: Int {
         let cal = Calendar.current
         let startOfMonth = cal.date(from: cal.dateComponents([.year, .month], from: Date())) ?? Date()
-        return sessions.filter { $0.lastActivityAt >= startOfMonth }
-            .reduce(0) { $0 + $1.totalTokens }
+        return allTokenRecords.filter { $0.timestamp >= startOfMonth }.reduce(0) { $0 + $1.totalTokens }
     }
 
     private var budgetState: BudgetState {
-        guard let settings = budgetSettings.first, settings.monthlyBudget > 0 else {
-            return .noBudget
-        }
+        guard let settings = budgetSettings.first, settings.monthlyBudget > 0 else { return .noBudget }
         let usage = Double(monthlyTokens) / Double(settings.monthlyBudget)
         if usage >= 1.0 { return .exceeded(usagePercent: usage) }
         if usage >= settings.warningThreshold2 { return .critical(usagePercent: usage, threshold: settings.warningThreshold2) }
@@ -124,147 +393,68 @@ struct DashboardView: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            // Header
-            HStack {
-                Text("Claude Token Monitor")
-                    .font(.headline)
-                Spacer()
-                Picker("", selection: $timeFilter) {
-                    ForEach(TimeFilter.allCases, id: \.self) { filter in
-                        Text(filter.rawValue).tag(filter)
-                    }
-                }
-                .pickerStyle(.segmented)
-                .frame(width: 200)
-            }
-
-            Divider()
-
-            // Total tokens — glass cards
-            HStack(spacing: 10) {
-                GlassStatCard(title: "Gesamt", value: TokenFormatter.format(totalAll), color: .primary)
-                GlassStatCard(title: "Input", value: TokenFormatter.format(totalInput), color: .blue)
-                GlassStatCard(title: "Output", value: TokenFormatter.format(totalOutput), color: .green)
-                GlassStatCard(title: "Cache", value: TokenFormatter.format(totalCache), color: .orange)
-            }
-
-            // Budget banner
-            if case .noBudget = budgetState {} else {
-                BudgetBanner(
-                    state: budgetState,
-                    currentTokens: monthlyTokens,
-                    budget: budgetSettings.first?.monthlyBudget ?? 0
-                )
-            }
-
-            if rateLimitEvents > 0 {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 12) {
+                // Header
                 HStack {
-                    Image(systemName: "exclamationmark.triangle.fill")
-                        .foregroundStyle(.yellow)
-                    Text("\(rateLimitEvents) Rate-Limit Events")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-                .padding(.horizontal, 8)
-                .padding(.vertical, 4)
-                .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 6))
-            }
-
-            Divider()
-
-            // Project breakdown
-            Text("Projekte")
-                .font(.subheadline.weight(.medium))
-
-            if projectBreakdown.isEmpty {
-                Text("Keine Daten für diesen Zeitraum")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .frame(maxWidth: .infinity, alignment: .center)
-                    .padding(.vertical, 8)
-            } else {
-                ScrollView {
-                    VStack(spacing: 6) {
-                        ForEach(projectBreakdown, id: \.name) { project in
-                            ProjectRow(
-                                name: project.name,
-                                tokens: project.tokens,
-                                fraction: totalAll > 0 ? Double(project.tokens) / Double(totalAll) : 0
-                            )
-                        }
+                    Text("Claude Token Monitor")
+                        .font(.headline)
+                    Spacer()
+                    Picker("", selection: $timeFilter) {
+                        ForEach(TimeFilter.allCases, id: \.self) { Text($0.rawValue).tag($0) }
                     }
+                    .pickerStyle(.segmented)
+                    .frame(width: 170)
                 }
-                .frame(maxHeight: 120)
-            }
 
-            Divider()
+                // Usage limits + Credits side by side or stacked
+                sectionHeader("Nutzungslimits", icon: "chart.bar.xaxis")
+                UsageLimitsCard(window: usageTracker.currentWindow)
+                CreditsCard(window: usageTracker.currentWindow)
 
-            // Footer
-            HStack {
-                Text("\(filteredSessions.count) Sessions")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                Spacer()
-                Button("Settings...") {
-                    NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil)
-                    NSApp.keyWindow?.close()
+                // Budget
+                if case .noBudget = budgetState {} else {
+                    BudgetBanner(
+                        state: budgetState,
+                        currentTokens: monthlyTokens,
+                        budget: budgetSettings.first?.monthlyBudget ?? 0
+                    )
                 }
-                .buttonStyle(.link)
-                .font(.caption)
+
+                // Projects
+                sectionHeader("Projekte", icon: "folder")
+                ProjectBreakdownSection(projects: projectBreakdown, totalTokens: totalAll)
+
+                // Footer
+                HStack {
+                    Text("\(filteredSessions.count) Sessions")
+                        .font(.system(size: 10).monospacedDigit())
+                        .foregroundStyle(.tertiary)
+                    Spacer()
+                    Button("Einstellungen") {
+                        NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil)
+                        NSApp.keyWindow?.close()
+                    }
+                    .buttonStyle(.link)
+                    .font(.system(size: 10))
+                }
+                .padding(.top, 2)
             }
+            .padding(14)
         }
-        .padding(16)
         .frame(width: 380, height: 380)
+        .environment(\.locale, Locale(identifier: "de_DE"))
     }
-}
 
-struct GlassStatCard: View {
-    let title: String
-    let value: String
-    let color: Color
-
-    var body: some View {
-        VStack(spacing: 2) {
-            Text(value)
-                .font(.title3.weight(.semibold).monospacedDigit())
-                .foregroundStyle(color)
+    private func sectionHeader(_ title: String, icon: String) -> some View {
+        HStack(spacing: 4) {
+            Image(systemName: icon)
+                .font(.system(size: 10))
+                .foregroundStyle(.secondary)
             Text(title)
-                .font(.caption2)
+                .font(.caption.weight(.semibold))
                 .foregroundStyle(.secondary)
         }
-        .frame(maxWidth: .infinity)
-        .padding(.vertical, 8)
-        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 8))
-    }
-}
-
-struct ProjectRow: View {
-    let name: String
-    let tokens: Int
-    let fraction: Double
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 3) {
-            HStack {
-                Text(name)
-                    .font(.caption)
-                    .lineLimit(1)
-                Spacer()
-                Text(TokenFormatter.format(tokens))
-                    .font(.caption.monospacedDigit())
-                    .foregroundStyle(.secondary)
-            }
-            GeometryReader { geo in
-                ZStack(alignment: .leading) {
-                    RoundedRectangle(cornerRadius: 2)
-                        .fill(.quaternary)
-                    RoundedRectangle(cornerRadius: 2)
-                        .fill(.tint)
-                        .frame(width: geo.size.width * fraction)
-                }
-            }
-            .frame(height: 4)
-        }
+        .padding(.top, 2)
     }
 }
