@@ -5,6 +5,7 @@ struct SettingsView: View {
     @StateObject private var loginItemManager = LoginItemManager()
     @Query private var budgetSettings: [BudgetSettings]
     @Environment(\.modelContext) private var modelContext
+    @AppStorage("floatingWidgetEnabled") private var floatingWidgetEnabled = true
 
     private var settings: BudgetSettings {
         if let existing = budgetSettings.first {
@@ -23,6 +24,19 @@ struct SettingsView: View {
                     get: { loginItemManager.isEnabled },
                     set: { _ in loginItemManager.toggle() }
                 ))
+            }
+
+            Section("Floating Widget") {
+                Toggle("Always-on-top Widget anzeigen", isOn: $floatingWidgetEnabled)
+                    .onChange(of: floatingWidgetEnabled) {
+                        NotificationCenter.default.post(
+                            name: Notification.Name("floatingWidgetToggled"),
+                            object: nil
+                        )
+                    }
+                Text("Zeigt ein kompaktes Overlay mit Session- und Wochenverbrauch")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
             }
 
             Section("Monatliches Token-Budget") {
@@ -51,7 +65,10 @@ struct SettingsView: View {
                     }
                     Slider(value: Binding(
                         get: { settings.warningThreshold1 },
-                        set: { settings.warningThreshold1 = $0; try? modelContext.save() }
+                        set: {
+                            settings.warningThreshold1 = min($0, settings.warningThreshold2 - 0.05)
+                            try? modelContext.save()
+                        }
                     ), in: 0.1...0.9, step: 0.05)
                     .tint(.yellow)
                 }
@@ -69,7 +86,10 @@ struct SettingsView: View {
                     }
                     Slider(value: Binding(
                         get: { settings.warningThreshold2 },
-                        set: { settings.warningThreshold2 = $0; try? modelContext.save() }
+                        set: {
+                            settings.warningThreshold2 = max($0, settings.warningThreshold1 + 0.05)
+                            try? modelContext.save()
+                        }
                     ), in: 0.1...0.99, step: 0.05)
                     .tint(.orange)
                 }
@@ -82,6 +102,6 @@ struct SettingsView: View {
         }
         .formStyle(.grouped)
         .padding()
-        .frame(width: 440, height: 360)
+        .frame(width: 440, height: 440)
     }
 }

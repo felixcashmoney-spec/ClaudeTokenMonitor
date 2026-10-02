@@ -9,6 +9,7 @@ final class TokenRecord {
     var cacheCreationInputTokens: Int
     var cacheReadInputTokens: Int
     var isRateLimited: Bool
+    var rateLimitResetMessage: String?
 
     var session: Session?
 
@@ -18,12 +19,14 @@ final class TokenRecord {
 
     init(timestamp: Date, inputTokens: Int, outputTokens: Int,
          cacheCreationInputTokens: Int, cacheReadInputTokens: Int,
-         isRateLimited: Bool = false) {
+         isRateLimited: Bool = false,
+         rateLimitResetMessage: String? = nil) {
         self.timestamp = timestamp
         self.inputTokens = inputTokens
         self.outputTokens = outputTokens
         self.cacheCreationInputTokens = cacheCreationInputTokens
         self.cacheReadInputTokens = cacheReadInputTokens
         self.isRateLimited = isRateLimited
+        self.rateLimitResetMessage = rateLimitResetMessage
     }
 }

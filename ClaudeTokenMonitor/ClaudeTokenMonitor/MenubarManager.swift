@@ -7,14 +7,13 @@ import Combine
 final class MenubarManager: NSObject, ObservableObject {
 
     private var statusItem: NSStatusItem!
-    private var popover: NSPopover!
     private var budgetMonitor: BudgetMonitor?
+    private var usageTracker: UsageWindowTracker?
     private var cancellable: AnyCancellable?
 
     override init() {
         super.init()
         setupStatusItem()
-        setupPopover()
     }
 
     func observeBudget(_ monitor: BudgetMonitor) {
@@ -26,23 +25,26 @@ final class MenubarManager: NSObject, ObservableObject {
             }
     }
 
+    func observeTracker(_ tracker: UsageWindowTracker) {
+        usageTracker = tracker
+    }
+
     private func setupStatusItem() {
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
         if let button = statusItem.button {
             button.image = NSImage(systemSymbolName: "chart.bar.fill", accessibilityDescription: "Claude Token Monitor")
-            button.action = #selector(togglePopover(_:))
-            button.target = self
         }
-    }
 
-    private func setupPopover() {
-        popover = NSPopover()
-        popover.contentSize = NSSize(width: 380, height: 380)
-        popover.behavior = .transient
-        popover.contentViewController = NSHostingController(
-            rootView: MenubarView()
-                .modelContainer(sharedModelContainer)
-        )
+        let menu = NSMenu()
+        menu.addItem(withTitle: "Einstellungen...", action: #selector(openSettings), keyEquivalent: ",")
+        menu.addItem(.separator())
+        menu.addItem(withTitle: "Beenden", action: #selector(quitApp), keyEquivalent: "q")
+
+        for item in menu.items {
+            item.target = self
+        }
+
+        statusItem.menu = menu
     }
 
     private func updateIcon(for state: BudgetState) {
@@ -50,6 +52,7 @@ final class MenubarManager: NSObject, ObservableObject {
         switch state {
         case .noBudget, .ok:
             button.image = NSImage(systemSymbolName: "chart.bar.fill", accessibilityDescription: "Claude Token Monitor")
+            button.contentTintColor = nil
         case .warning:
             button.image = NSImage(systemSymbolName: "chart.bar.fill", accessibilityDescription: "Claude Token Monitor - Warnung")
             button.contentTintColor = .systemYellow
@@ -62,13 +65,12 @@ final class MenubarManager: NSObject, ObservableObject {
         }
     }
 
-    @objc private func togglePopover(_ sender: AnyObject?) {
-        guard let button = statusItem.button else { return }
-        if popover.isShown {
-            popover.performClose(sender)
-        } else {
-            popover.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
-            popover.contentViewController?.view.window?.makeKey()
-        }
+    @objc private func openSettings() {
+        NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil)
+        NSApp.activate(ignoringOtherApps: true)
+    }
+
+    @objc private func quitApp() {
+        NotificationCenter.default.post(name: Notification.Name("appShouldQuit"), object: nil)
     }
 }

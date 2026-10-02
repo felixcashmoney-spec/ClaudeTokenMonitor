@@ -1,0 +1,10 @@
+.claude/
+*.log
+*.db
+*.xcuserstate
+xcuserdata/
+ClaudeTokenMonitor/fst.swift
+ClaudeTokenMonitor/fst_debug.swift
+ClaudeTokenMonitor/original_dash.swift
+Claude.pdf
+*build_log.txt

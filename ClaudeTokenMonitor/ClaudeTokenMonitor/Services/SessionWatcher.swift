@@ -5,12 +5,13 @@ import Combine
 @MainActor
 final class SessionWatcher: ObservableObject {
     @Published var isWatching = false
+    @Published var lastRateLimitMessage: String?
 
     private var modelContext: ModelContext?
     private var fileOffsets: [URL: UInt64] = [:]
     private var timer: Timer?
-    private var dispatchSource: DispatchSourceFileSystemObject?
-    private var directoryHandle: CInt = -1
+
+    private var projectPathCache: [String: String] = [:]
 
     private var claudeProjectsURL: URL {
         FileManager.default.homeDirectoryForCurrentUser
@@ -21,10 +22,8 @@ final class SessionWatcher: ObservableObject {
         self.modelContext = modelContext
         isWatching = true
 
-        // Initial scan of all existing session files
         performFullScan()
 
-        // Poll every 5 seconds for new data
         timer = Timer.scheduledTimer(withTimeInterval: 5.0, repeats: true) { [weak self] _ in
             Task { @MainActor in
                 self?.pollForChanges()
@@ -39,54 +38,66 @@ final class SessionWatcher: ObservableObject {
     }
 
     private func performFullScan() {
-        let projectDirs = findProjectDirectories()
-        for (projectPath, jsonlFiles) in projectDirs {
-            for file in jsonlFiles {
-                processSessionFile(file, projectPath: projectPath, isInitialScan: true)
-            }
+        let allFiles = findAllJSONLFiles()
+        for file in allFiles {
+            processSessionFile(file, isInitialScan: true)
         }
         try? modelContext?.save()
     }
 
     private func pollForChanges() {
-        let projectDirs = findProjectDirectories()
+        let allFiles = findAllJSONLFiles()
         var hasChanges = false
 
-        for (projectPath, jsonlFiles) in projectDirs {
-            for file in jsonlFiles {
-                let offset = fileOffsets[file] ?? 0
-                let (records, newOffset) = JSONLParser.parseNewLines(in: file, afterByteOffset: offset)
+        for file in allFiles {
+            let offset = fileOffsets[file] ?? 0
+            let (records, newOffset) = JSONLParser.parseNewLines(in: file, afterByteOffset: offset)
 
-                if !records.isEmpty {
-                    let sessionId = file.deletingPathExtension().lastPathComponent
-                    let session = findOrCreateSession(
-                        sessionId: sessionId,
-                        projectPath: projectPath,
-                        model: records.first?.model ?? "unknown",
-                        createdAt: records.first?.timestamp ?? Date()
+            if !records.isEmpty {
+                // Use cwd from the first record that has it, or derive from directory
+                let projectPath = records.first(where: { $0.cwd != nil })?.cwd
+                    ?? deriveProjectPath(from: file)
+
+                // Session ID: use the main session file name (not subagent)
+                let sessionId = extractSessionId(from: file)
+
+                let session = findOrCreateSession(
+                    sessionId: sessionId,
+                    projectPath: projectPath,
+                    model: records.first?.model ?? "unknown",
+                    createdAt: records.first?.timestamp ?? Date()
+                )
+
+                for record in records {
+                    let tokenRecord = TokenRecord(
+                        timestamp: record.timestamp,
+                        inputTokens: record.inputTokens,
+                        outputTokens: record.outputTokens,
+                        cacheCreationInputTokens: record.cacheCreationInputTokens,
+                        cacheReadInputTokens: record.cacheReadInputTokens,
+                        isRateLimited: record.isRateLimited,
+                        rateLimitResetMessage: record.rateLimitResetMessage
                     )
+                    tokenRecord.session = session
+                    session.tokenRecords.append(tokenRecord)
+                    session.lastActivityAt = record.timestamp
 
-                    for record in records {
-                        let tokenRecord = TokenRecord(
-                            timestamp: record.timestamp,
-                            inputTokens: record.inputTokens,
-                            outputTokens: record.outputTokens,
-                            cacheCreationInputTokens: record.cacheCreationInputTokens,
-                            cacheReadInputTokens: record.cacheReadInputTokens,
-                            isRateLimited: record.isRateLimited
-                        )
-                        tokenRecord.session = session
-                        session.tokenRecords.append(tokenRecord)
-                        session.lastActivityAt = record.timestamp
-                        if record.model != "unknown" {
-                            session.model = record.model
-                        }
-                        modelContext?.insert(tokenRecord)
+                    if record.model != "unknown" && record.model != "<synthetic>" {
+                        session.model = record.model
                     }
-                    hasChanges = true
+                    if let cwd = record.cwd {
+                        session.projectPath = cwd
+                        session.projectName = Session.extractProjectName(from: cwd)
+                    }
+                    if record.isRateLimited, let msg = record.rateLimitResetMessage {
+                        session.lastRateLimitMessage = msg
+                        lastRateLimitMessage = msg
+                    }
+                    modelContext?.insert(tokenRecord)
                 }
-                fileOffsets[file] = newOffset
+                hasChanges = true
             }
+            fileOffsets[file] = newOffset
         }
 
         if hasChanges {
@@ -94,12 +105,16 @@ final class SessionWatcher: ObservableObject {
         }
     }
 
-    private func processSessionFile(_ url: URL, projectPath: String, isInitialScan: Bool) {
-        let (sessionId, records) = JSONLParser.parseSessionFile(at: url)
+    private func processSessionFile(_ url: URL, isInitialScan: Bool) {
+        let (_, records) = JSONLParser.parseSessionFile(at: url)
         guard !records.isEmpty else {
             fileOffsets[url] = 0
             return
         }
+
+        let projectPath = records.first(where: { $0.cwd != nil })?.cwd
+            ?? deriveProjectPath(from: url)
+        let sessionId = extractSessionId(from: url)
 
         let session = findOrCreateSession(
             sessionId: sessionId,
@@ -108,7 +123,6 @@ final class SessionWatcher: ObservableObject {
             createdAt: records.first?.timestamp ?? Date()
         )
 
-        // Only add records if this is initial scan and session has no records yet
         if isInitialScan && session.tokenRecords.isEmpty {
             for record in records {
                 let tokenRecord = TokenRecord(
@@ -117,21 +131,114 @@ final class SessionWatcher: ObservableObject {
                     outputTokens: record.outputTokens,
                     cacheCreationInputTokens: record.cacheCreationInputTokens,
                     cacheReadInputTokens: record.cacheReadInputTokens,
-                    isRateLimited: record.isRateLimited
+                    isRateLimited: record.isRateLimited,
+                    rateLimitResetMessage: record.rateLimitResetMessage
                 )
                 tokenRecord.session = session
                 session.tokenRecords.append(tokenRecord)
                 modelContext?.insert(tokenRecord)
+
+                if let cwd = record.cwd {
+                    session.projectPath = cwd
+                    session.projectName = Session.extractProjectName(from: cwd)
+                }
+                if record.isRateLimited, let msg = record.rateLimitResetMessage {
+                    session.lastRateLimitMessage = msg
+                    lastRateLimitMessage = msg
+                }
             }
             if let lastRecord = records.last {
                 session.lastActivityAt = lastRecord.timestamp
             }
         }
 
-        // Track file offset for incremental updates
         if let fileSize = try? FileManager.default.attributesOfItem(atPath: url.path)[.size] as? UInt64 {
             fileOffsets[url] = fileSize
         }
+    }
+
+    /// Extract the main session ID from any file path (including subagent paths)
+    private func extractSessionId(from url: URL) -> String {
+        // Subagent path: .../SESSION_UUID/subagents/agent-HASH.jsonl
+        // Main path: .../SESSION_UUID.jsonl
+        let components = url.pathComponents
+        if let subagentIdx = components.firstIndex(of: "subagents"),
+           subagentIdx > 0 {
+            // Parent of "subagents" is the session UUID directory
+            return components[subagentIdx - 1]
+        }
+        return url.deletingPathExtension().lastPathComponent
+    }
+
+    /// Derive project path from the directory name (fallback when cwd not in JSONL)
+    private func deriveProjectPath(from url: URL) -> String {
+        // Walk up to find the project directory under ~/.claude/projects/
+        var current = url.deletingLastPathComponent()
+        let projectsPath = claudeProjectsURL.path
+
+        while current.path != projectsPath && current.path != "/" {
+            let parent = current.deletingLastPathComponent()
+            if parent.path == projectsPath {
+                let dirName = current.lastPathComponent
+                return resolveProjectDirName(dirName)
+            }
+            current = parent
+        }
+        return "Unknown"
+    }
+
+    /// Resolve a Claude projects directory name (e.g. "-Users-felixleis-ClaudeCode-skills-installieren")
+    /// to an actual filesystem path using greedy component matching.
+    ///
+    /// The Claude projects dir uses "-" as a path separator, but project names themselves
+    /// may contain dashes. We validate against the filesystem to disambiguate.
+    private func resolveProjectDirName(_ dirName: String) -> String {
+        // Check cache first
+        if let cached = projectPathCache[dirName] {
+            return cached
+        }
+
+        guard dirName.hasPrefix("-") else {
+            projectPathCache[dirName] = dirName
+            return dirName
+        }
+
+        // Strip leading "-" and split into candidate components
+        let stripped = String(dirName.dropFirst())
+        let parts = stripped.components(separatedBy: "-")
+        guard !parts.isEmpty else {
+            projectPathCache[dirName] = dirName
+            return dirName
+        }
+
+        let fm = FileManager.default
+        // Start building the path — first component is always a top-level dir (e.g. "Users")
+        var resolvedPath = "/" + parts[0]
+        var i = 1
+
+        while i < parts.count {
+            // Try appending next part as a new directory component
+            let candidate = resolvedPath + "/" + parts[i]
+            if fm.fileExists(atPath: candidate) {
+                resolvedPath = candidate
+                i += 1
+            } else {
+                // That directory doesn't exist — try merging with current last segment using dash
+                let dashMerge = resolvedPath + "-" + parts[i]
+                if fm.fileExists(atPath: dashMerge) {
+                    resolvedPath = dashMerge
+                    i += 1
+                } else {
+                    // Neither exists — fall back to treating all remaining parts as slash-separated
+                    // (best effort for unknown structures)
+                    resolvedPath = resolvedPath + "/" + parts[i]
+                    i += 1
+                }
+            }
+        }
+
+        projectPathCache[dirName] = resolvedPath
+        return resolvedPath
     }
 
     private func findOrCreateSession(sessionId: String, projectPath: String, model: String, createdAt: Date) -> Session {
@@ -147,26 +254,35 @@ final class SessionWatcher: ObservableObject {
         return session
     }
 
-    private func findProjectDirectories() -> [(String, [URL])] {
+    /// Find all JSONL files including subagent files
+    private func findAllJSONLFiles() -> [URL] {
         let fm = FileManager.default
-        let projectsDir = claudeProjectsURL
-        guard let projectDirs = try? fm.contentsOfDirectory(at: projectsDir, includingPropertiesForKeys: nil) else {
+        guard let projectDirs = try? fm.contentsOfDirectory(at: claudeProjectsURL, includingPropertiesForKeys: nil) else {
             return []
         }
 
-        var results: [(String, [URL])] = []
+        var allFiles: [URL] = []
         for dir in projectDirs where dir.hasDirectoryPath {
-            // Decode project path from directory name (dashes replace slashes)
-            let dirName = dir.lastPathComponent
-            let projectPath = dirName.replacingOccurrences(of: "-", with: "/")
+            allFiles.append(contentsOf: findJSONLRecursive(in: dir))
+        }
+        return allFiles
+    }
 
-            let jsonlFiles = (try? fm.contentsOfDirectory(at: dir, includingPropertiesForKeys: nil))?
-                .filter { $0.pathExtension == "jsonl" } ?? []
+    private func findJSONLRecursive(in directory: URL) -> [URL] {
+        let fm = FileManager.default
+        guard let contents = try? fm.contentsOfDirectory(at: directory, includingPropertiesForKeys: [.isDirectoryKey]) else {
+            return []
+        }
 
-            if !jsonlFiles.isEmpty {
-                results.append((projectPath, jsonlFiles))
+        var files: [URL] = []
+        for item in contents {
+            if item.pathExtension == "jsonl" {
+                files.append(item)
+            } else if item.hasDirectoryPath {
+                // Recurse into subdirectories (session dirs with subagents)
+                files.append(contentsOf: findJSONLRecursive(in: item))
             }
         }
-        return results
+        return files
     }
 }
