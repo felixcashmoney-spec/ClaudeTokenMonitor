@@ -328,31 +328,33 @@ struct UsageLimitsCard: View {
             
             Divider().opacity(0.5)
             
-            // Extra Credit
-            if window?.extraUsageEnabled == true || window?.extraUsageMonthlyLimitCents ?? 0 > 0 {
+            // Extra Credit / Prepaid Balance
+            if window?.extraUsageEnabled == true || window?.extraUsageMonthlyLimitCents ?? 0 > 0 || window?.creditBalanceCents ?? 0 > 0 {
+                let balance = window?.creditBalanceCents ?? 0
                 let spent = window?.extraUsageSpentCents ?? 0
                 let limit = window?.extraUsageMonthlyLimitCents ?? 0
+                let eurosBalance = Double(balance) / 100.0
                 let eurosSpent = Double(spent) / 100.0
                 let eurosLimit = Double(limit) / 100.0
                 VStack(alignment: .leading, spacing: 4) {
-                    HStack {
-                        Text(String(format: "%.2f €", eurosSpent).replacingOccurrences(of: ".", with: ","))
-                            .font(.system(size: 14, weight: .bold))
-                            .foregroundStyle(.red)
-                        Text("Guthaben")
-                            .font(.system(size: 11, weight: .medium))
-                        Spacer()
-                        Image(systemName: "info.circle.fill")
-                            .font(.system(size: 10))
-                            .foregroundStyle(.tint)
+                    if balance > 0 {
+                        HStack {
+                            Text(String(format: "%.2f €", eurosBalance).replacingOccurrences(of: ".", with: ","))
+                                .font(.system(size: 14, weight: .bold))
+                                .foregroundStyle(.green)
+                            Text("Guthaben")
+                                .font(.system(size: 11, weight: .medium))
+                            Spacer()
+                            Image(systemName: "creditcard.fill")
+                                .font(.system(size: 10))
+                                .foregroundStyle(.tint)
+                        }
                     }
                     HStack {
-                        Text("Ausgegeben")
+                        Text(String(format: "%.2f € ausgegeben", eurosSpent).replacingOccurrences(of: ".", with: ","))
                         Spacer()
                         if limit > 0 {
-                            Text(String(format: "Monatslimit %.2f €", eurosLimit).replacingOccurrences(of: ".", with: ","))
-                        } else {
-                            Text("Monatslimit")
+                            Text(String(format: "Limit %.2f €", eurosLimit).replacingOccurrences(of: ".", with: ","))
                         }
                     }
                     .font(.system(size: 9))

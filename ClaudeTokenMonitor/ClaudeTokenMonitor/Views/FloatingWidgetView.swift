@@ -157,7 +157,8 @@ struct FloatingWidgetView: View {
 struct ClaudeUsageCard: View {
     let window: UsageWindow?
     let now: Date
-    
+    @EnvironmentObject var usageTracker: UsageWindowTracker
+
     var body: some View {
         LiquidGlassCard(glowColor: .cyan) {
             VStack(alignment: .leading, spacing: 12) {
@@ -261,6 +262,61 @@ struct ClaudeUsageCard: View {
                                 .font(.system(size: 10, weight: .semibold, design: .monospaced))
                                 .foregroundStyle(.white)
                         }
+                    }
+                }
+
+                // API status / Credit balance
+                if let client = usageTracker.apiClient {
+                    if client.needsLogin {
+                        Button {
+                            Task { await client.fetchAll() }
+                        } label: {
+                            HStack(spacing: 4) {
+                                Image(systemName: "person.crop.circle.badge.exclamationmark")
+                                    .font(.system(size: 9))
+                                    .foregroundStyle(.yellow)
+                                Text("Bei claude.ai anmelden")
+                                    .font(.system(size: 9, weight: .medium))
+                                    .foregroundStyle(.yellow)
+                            }
+                        }
+                        .buttonStyle(.plain)
+                    } else if let error = client.lastError {
+                        HStack(spacing: 4) {
+                            Image(systemName: "exclamationmark.triangle")
+                                .font(.system(size: 9))
+                                .foregroundStyle(.orange)
+                            Text(error)
+                                .font(.system(size: 8))
+                                .foregroundStyle(.orange.opacity(0.8))
+                                .lineLimit(1)
+                        }
+                    } else if let freshness = window?.apiDataFreshness {
+                        HStack(spacing: 4) {
+                            Image(systemName: "checkmark.circle.fill")
+                                .font(.system(size: 8))
+                                .foregroundStyle(.green.opacity(0.6))
+                            Text("API \(freshness.formatted(.dateTime.hour().minute()))")
+                                .font(.system(size: 8))
+                                .foregroundStyle(.white.opacity(0.3))
+                        }
+                    }
+                }
+
+                // Prepaid credit balance
+                if let balance = window?.creditBalanceCents, balance > 0 {
+                    Divider().overlay(Color.white.opacity(0.08))
+                    HStack {
+                        Image(systemName: "creditcard.fill")
+                            .font(.system(size: 9))
+                            .foregroundStyle(.green)
+                        Text("Guthaben")
+                            .font(.system(size: 10, weight: .medium))
+                            .foregroundStyle(.secondary)
+                        Spacer()
+                        Text(String(format: "%.2f €", Double(balance) / 100.0).replacingOccurrences(of: ".", with: ","))
+                            .font(.system(size: 11, weight: .bold, design: .monospaced))
+                            .foregroundStyle(.green)
                     }
                 }
 
@@ -396,8 +452,19 @@ struct AntigravityModelQuota: Equatable, Identifiable {
     let id = UUID()
     let name: String
     let quotaID: Int
-    let usedSegments: Int
+    let usageFraction: Double   // 0.0–1.0 from protobuf (missing = 0)
+    let resetTimestamp: Date?   // real reset time from protobuf
     let totalSegments: Int = 5
+
+    var usedSegments: Int {
+        Int((usageFraction * Double(totalSegments)).rounded())
+    }
+
+    static func == (lhs: Self, rhs: Self) -> Bool {
+        lhs.name == rhs.name && lhs.quotaID == rhs.quotaID
+            && lhs.usageFraction == rhs.usageFraction
+            && lhs.resetTimestamp == rhs.resetTimestamp
+    }
 }
 
 struct AntigravityCreditsData {
@@ -412,17 +479,59 @@ final class AntigravityDataService: ObservableObject, @unchecked Sendable {
     @Published var credits: AntigravityCreditsData?
     @Published var lastUpdated: Date?
     private var timer: Timer?
-    
+    private var fileMonitorSource: DispatchSourceFileSystemObject?
+    private var fileDescriptor: Int32 = -1
+
+    private static var dbPath: String {
+        let appSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
+        return appSupport.appendingPathComponent("Antigravity/User/globalStorage/state.vscdb").path
+    }
+
     init() {
         loadFromDB()
-        // Refresh every 30 seconds
-        timer = Timer.scheduledTimer(withTimeInterval: 30, repeats: true) { [weak self] _ in
+        startFileMonitor()
+        // Fallback poll every 15s in case file events are missed
+        timer = Timer.scheduledTimer(withTimeInterval: 15, repeats: true) { [weak self] _ in
             Task { @MainActor in
                 self?.loadFromDB()
             }
         }
     }
-    
+
+    deinit {
+        stopFileMonitor()
+    }
+
+    /// Watch the SQLite DB file — re-read immediately on every write
+    private func startFileMonitor() {
+        let path = Self.dbPath
+        let fd = open(path, O_EVTONLY)
+        guard fd >= 0 else { return }
+        fileDescriptor = fd
+
+        let source = DispatchSource.makeFileSystemObjectSource(
+            fileDescriptor: fd,
+            eventMask: [.write, .extend, .rename],
+            queue: .global(qos: .utility)
+        )
+        source.setEventHandler { [weak self] in
+            Task { @MainActor in
+                self?.loadFromDB()
+            }
+        }
+        source.setCancelHandler {
+            close(fd)
+        }
+        source.resume()
+        fileMonitorSource = source
+    }
+
+    private func stopFileMonitor() {
+        fileMonitorSource?.cancel()
+        fileMonitorSource = nil
+        fileDescriptor = -1
+    }
+
     func loadFromDB() {
         Task.detached(priority: .background) {
             let data = Self.readAntigravityState()
@@ -435,9 +544,7 @@ final class AntigravityDataService: ObservableObject, @unchecked Sendable {
     
     /// Read the Antigravity SQLite database for credits and model info
     private static func readAntigravityState() -> AntigravityCreditsData? {
-        let appSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
-        let dbPath = appSupport.appendingPathComponent("Antigravity/User/globalStorage/state.vscdb").path
-        
+        let dbPath = Self.dbPath
         guard FileManager.default.fileExists(atPath: dbPath) else { return nil }
         
         var db: OpaquePointer?
@@ -461,40 +568,48 @@ final class AntigravityDataService: ObservableObject, @unchecked Sendable {
         var available = 0
         var minimum = 0
         var useAI = false
-        
+
         let query = "SELECT value FROM ItemTable WHERE key = 'antigravityUnifiedStateSync.modelCredits';"
         var stmt: OpaquePointer?
         guard sqlite3_prepare_v2(db, query, -1, &stmt, nil) == SQLITE_OK else {
             return (available, minimum, useAI)
         }
         defer { sqlite3_finalize(stmt) }
-        
+
         if sqlite3_step(stmt) == SQLITE_ROW {
-            // Value is stored as base64 text
             if let cStr = sqlite3_column_text(stmt, 0) {
                 let base64Str = String(cString: cStr)
                 if let rawData = Data(base64Encoded: base64Str) {
-                    // Parse the protobuf key-value pairs
-                    let entries = parseProtobufKeyValues(rawData)
-                    for (key, valueB64) in entries {
-                        if let valueData = Data(base64Encoded: valueB64) {
-                            let varint = decodeProtobufVarint(valueData)
-                            switch key {
-                            case "availableCreditsSentinelKey":
-                                available = varint ?? 0
-                            case "minimumCreditAmountForUsageKey":
-                                minimum = varint ?? 0
-                            case "useAICreditsSentinelKey":
-                                useAI = (varint ?? 0) != 0
-                            default:
-                                break
-                            }
+                    // Parse protobuf key-value pairs using robust parser
+                    let outerFields = parseRawProtobuf([UInt8](rawData))
+                    for of in outerFields where of.fn == 1 && of.wt == 2 {
+                        guard let entryBytes = of.bytes else { continue }
+                        let ef = parseRawProtobuf(entryBytes)
+                        guard let keyBytes = ef.first(where: { $0.fn == 1 && $0.wt == 2 })?.bytes,
+                              let key = String(bytes: keyBytes, encoding: .utf8) else { continue }
+                        // field 2 = value wrapper → field 1 = base64 string
+                        guard let valWrapper = ef.first(where: { $0.fn == 2 && $0.wt == 2 })?.bytes else { continue }
+                        let vf = parseRawProtobuf(valWrapper)
+                        guard let b64Bytes = vf.first(where: { $0.fn == 1 && $0.wt == 2 })?.bytes,
+                              let b64Str = String(bytes: b64Bytes, encoding: .utf8),
+                              let valueData = Data(base64Encoded: b64Str) else { continue }
+                        // Decode varint value (skip field tag byte)
+                        let varint = decodeProtobufVarint(valueData)
+                        switch key {
+                        case "availableCreditsSentinelKey":
+                            available = varint ?? 0
+                        case "minimumCreditAmountForUsageKey":
+                            minimum = varint ?? 0
+                        case "useAICreditsSentinelKey":
+                            useAI = (varint ?? 0) != 0
+                        default:
+                            break
                         }
                     }
                 }
             }
         }
-        
+
         return (available, minimum, useAI)
     }
     
@@ -503,20 +618,24 @@ final class AntigravityDataService: ObservableObject, @unchecked Sendable {
         var stmt: OpaquePointer?
         guard sqlite3_prepare_v2(db, query, -1, &stmt, nil) == SQLITE_OK else { return nil }
         defer { sqlite3_finalize(stmt) }
-        
+
         if sqlite3_step(stmt) == SQLITE_ROW {
             if let cStr = sqlite3_column_text(stmt, 0) {
                 let base64Str = String(cString: cStr)
                 if let rawData = Data(base64Encoded: base64Str) {
-                    let entries = parseProtobufKeyValues(rawData)
-                    for (key, valueB64) in entries {
-                        if key == "last_selected_agent_model_sentinel_key" {
-                            // This value is a model ID stored as a protobuf varint
-                            if let valueData = Data(base64Encoded: valueB64) {
-                                let modelId = decodeProtobufVarint(valueData)
-                                return modelIdToName(modelId ?? 0)
-                            }
-                        }
+                    let outerFields = parseRawProtobuf([UInt8](rawData))
+                    for of in outerFields where of.fn == 1 && of.wt == 2 {
+                        guard let entryBytes = of.bytes else { continue }
+                        let ef = parseRawProtobuf(entryBytes)
+                        guard let keyBytes = ef.first(where: { $0.fn == 1 && $0.wt == 2 })?.bytes,
+                              String(bytes: keyBytes, encoding: .utf8) == "last_selected_agent_model_sentinel_key" else { continue }
+                        guard let valWrapper = ef.first(where: { $0.fn == 2 && $0.wt == 2 })?.bytes else { continue }
+                        let vf = parseRawProtobuf(valWrapper)
+                        guard let b64Bytes = vf.first(where: { $0.fn == 1 && $0.wt == 2 })?.bytes,
+                              let b64Str = String(bytes: b64Bytes, encoding: .utf8),
+                              let valueData = Data(base64Encoded: b64Str) else { continue }
+                        let modelId = decodeProtobufVarint(valueData)
+                        return modelIdToName(modelId ?? 0)
                     }
                 }
             }
@@ -527,55 +646,128 @@ final class AntigravityDataService: ObservableObject, @unchecked Sendable {
     private static func readModelsFromDB(db: OpaquePointer?) -> [AntigravityModelQuota] {
         let query = "SELECT value FROM ItemTable WHERE key = 'antigravityUnifiedStateSync.userStatus';"
         var stmt: OpaquePointer?
-        var modelsList: [AntigravityModelQuota] = []
         guard sqlite3_prepare_v2(db, query, -1, &stmt, nil) == SQLITE_OK else { return [] }
         defer { sqlite3_finalize(stmt) }
-        
-        let knownModels = [
-            "Gemini 3.1 Pro (High)",
-            "Gemini 3.1 Pro (Low)",
-            "Gemini 3 Flash",
-            "Claude Sonnet 4.6 (Thinking)",
-            "Claude Opus 4.6 (Thinking)",
-            "GPT-OSS 120B (Medium)"
-        ]
-        
-        func findModels(in data: Data) {
-            let string = String(data: data, encoding: .ascii) ?? String(data: data, encoding: .utf8) ?? ""
-            for name in knownModels {
-                if !modelsList.contains(where: { $0.name == name }) && string.contains(name) {
-                    var used = 0
-                    if name.contains("Flash") { used = 0 }
-                    else if name.contains("High") || name.contains("Low") { used = 1 }
-                    else { used = 3 }
-                    modelsList.append(AntigravityModelQuota(name: name, quotaID: 0, usedSegments: used))
+        guard sqlite3_step(stmt) == SQLITE_ROW,
+              let cStr = sqlite3_column_text(stmt, 0) else { return [] }
+
+        let base64Str = String(cString: cStr)
+        guard let outerData = Data(base64Encoded: base64Str) else { return [] }
+
+        // Outer layer is a protobuf key-value wrapper; extract the inner base64 value
+        // Use parseRawProtobuf (handles multi-byte varint lengths) instead of parseProtobufKeyValues
+        var innerData: Data?
+        let outerFields = parseRawProtobuf([UInt8](outerData))
+        for of in outerFields where of.fn == 1 && of.wt == 2 {
+            guard let entryBytes = of.bytes else { continue }
+            let entryFields = parseRawProtobuf(entryBytes)
+            guard let keyBytes = entryFields.first(where: { $0.fn == 1 && $0.wt == 2 })?.bytes,
+                  String(bytes: keyBytes, encoding: .utf8) == "userStatusSentinelKey" else { continue }
+            // field 2 = value wrapper → field 1 = base64 string
+            if let valueWrapper = entryFields.first(where: { $0.fn == 2 && $0.wt == 2 })?.bytes {
+                let valueFields = parseRawProtobuf(valueWrapper)
+                if let b64Bytes = valueFields.first(where: { $0.fn == 1 && $0.wt == 2 })?.bytes,
+                   let b64String = String(bytes: b64Bytes, encoding: .utf8),
+                   let decoded = Data(base64Encoded: b64String) {
+                    innerData = decoded
                 }
             }
-            
-            // Look for any base64 string in the content and decode it
-            let pattern = "[A-Za-z0-9+/=]{40,}"
-            if let regex = try? NSRegularExpression(pattern: pattern) {
-                let nsString = string as NSString
-                let results = regex.matches(in: string, range: NSRange(location: 0, length: nsString.length))
-                for match in results {
-                    let b64 = nsString.substring(with: match.range)
-                    if let decoded = Data(base64Encoded: b64) {
-                        findModels(in: decoded)
+            break
+        }
+        guard let innerData else { return [] }
+
+        // Parse top-level protobuf; field 33 holds the models container
+        let topFields = parseRawProtobuf([UInt8](innerData))
+        guard let modelsBlob = topFields.first(where: { $0.fn == 33 && $0.wt == 2 })?.bytes else { return [] }
+
+        // Each sub-field 1 inside the container is one model entry
+        let containerFields = parseRawProtobuf(modelsBlob)
+        var models: [AntigravityModelQuota] = []
+
+        for cf in containerFields where cf.fn == 1 && cf.wt == 2 {
+            guard let entryBytes = cf.bytes else { continue }
+            let ef = parseRawProtobuf(entryBytes)
+
+            // field 1 (string) = model name
+            guard let nameBytes = ef.first(where: { $0.fn == 1 && $0.wt == 2 })?.bytes,
+                  let name = String(bytes: nameBytes, encoding: .utf8) else { continue }
+
+            // field 2 (bytes) → sub varint = model ID
+            var modelID = 0
+            if let idBlob = ef.first(where: { $0.fn == 2 && $0.wt == 2 })?.bytes {
+                let sub = parseRawProtobuf(idBlob)
+                modelID = sub.first(where: { $0.wt == 0 })?.varint ?? 0
+            }
+
+            // field 15 (bytes) → quota info
+            var usageFraction: Double = 0
+            var resetDate: Date?
+            if let quotaBlob = ef.first(where: { $0.fn == 15 && $0.wt == 2 })?.bytes {
+                let qf = parseRawProtobuf(quotaBlob)
+                // sub field 1, wire type 5 (float32) = usage 0.0–1.0
+                if let f32 = qf.first(where: { $0.fn == 1 && $0.wt == 5 })?.float32 {
+                    usageFraction = Double(f32)
+                }
+                // sub field 2 (bytes) → sub varint = reset Unix timestamp
+                if let resetBlob = qf.first(where: { $0.fn == 2 && $0.wt == 2 })?.bytes {
+                    let rf = parseRawProtobuf(resetBlob)
+                    if let ts = rf.first(where: { $0.wt == 0 })?.varint, ts > 0 {
+                        resetDate = Date(timeIntervalSince1970: TimeInterval(ts))
                     }
                 }
             }
+
+            models.append(AntigravityModelQuota(
+                name: name,
+                quotaID: modelID,
+                usageFraction: usageFraction,
+                resetTimestamp: resetDate
+            ))
         }
-        
-        if sqlite3_step(stmt) == SQLITE_ROW {
-            if let cStr = sqlite3_column_text(stmt, 0) {
-                let base64Str = String(cString: cStr)
-                if let rawData = Data(base64Encoded: base64Str) {
-                    findModels(in: rawData)
-                }
+
+        return models.sorted { $0.name > $1.name }
+    }
+
+    // MARK: - Low-level protobuf field parser
+
+    private struct RawField {
+        let fn: Int    // field number
+        let wt: Int    // wire type
+        let varint: Int?
+        let bytes: [UInt8]?
+        let float32: Float?
+    }
+
+    private static func parseRawProtobuf(_ data: [UInt8]) -> [RawField] {
+        var results: [RawField] = []
+        var pos = 0
+        while pos < data.count {
+            var tag = 0; var shift = 0
+            while pos < data.count { let b = data[pos]; pos += 1; tag |= Int(b & 0x7f) << shift; shift += 7; if b & 0x80 == 0 { break } }
+            let fn = tag >> 3; let wt = tag & 0x07
+            switch wt {
+            case 0: // varint
+                var val = 0; shift = 0
+                while pos < data.count { let b = data[pos]; pos += 1; val |= Int(b & 0x7f) << shift; shift += 7; if b & 0x80 == 0 { break } }
+                results.append(RawField(fn: fn, wt: wt, varint: val, bytes: nil, float32: nil))
+            case 2: // length-delimited
+                var len = 0; shift = 0
+                while pos < data.count { let b = data[pos]; pos += 1; len |= Int(b & 0x7f) << shift; shift += 7; if b & 0x80 == 0 { break } }
+                guard pos + len <= data.count else { return results }
+                results.append(RawField(fn: fn, wt: wt, varint: nil, bytes: Array(data[pos..<pos+len]), float32: nil))
+                pos += len
+            case 5: // 32-bit (float)
+                guard pos + 4 <= data.count else { return results }
+                let f = [data[pos], data[pos+1], data[pos+2], data[pos+3]].withUnsafeBytes { $0.load(as: Float.self) }
+                results.append(RawField(fn: fn, wt: wt, varint: nil, bytes: nil, float32: f))
+                pos += 4
+            case 1: // 64-bit
+                pos += 8
+            default:
+                return results
             }
         }
-        
-        return modelsList.sorted(by: { $0.name > $1.name })
+        return results
     }
 
     
@@ -841,81 +1033,60 @@ struct AntigravityUsageCard: View {
 
 struct AntigravityModelRow: View {
     let model: AntigravityModelQuota
-    
-    // We compute a visually ticking countdown based on time of day
-    // to give the user the autonomous feeling they requested.
-    private var timeUntilReset: String {
-        let now = Date()
-        var components = Calendar.current.dateComponents([.year, .month, .day, .hour, .minute], from: now)
-        var resetDate: Date
-        
-        // Simulating the realistic reset times
-        if model.name.contains("Pro") {
-            // "Refreshes in 6 days, 5 hours" - we anchor the reset to Friday at 23:00
-            components.weekday = 6 // Friday
-            components.hour = 23
-            components.minute = 0
-            components.second = 0
-            if let date = Calendar.current.nextDate(after: now, matching: components, matchingPolicy: .nextTime) {
-                resetDate = date
-            } else {
-                resetDate = now.addingTimeInterval(86400 * 6)
-            }
-        } else {
-            // "Refreshes in 4 hours, 38 minutes" - we anchor the reset to every 6 hours
-            let hoursUntilNextReset = 6 - (components.hour! % 6)
-            resetDate = Calendar.current.date(byAdding: .hour, value: hoursUntilNextReset, to: Calendar.current.startOfDay(for: now).addingTimeInterval(Double(components.hour!) * 3600)) ?? now.addingTimeInterval(3600 * 4)
-        }
-        
-        let remaining = resetDate.timeIntervalSince(now)
+
+    private func resetCountdown(now: Date) -> String {
+        guard let reset = model.resetTimestamp else { return "" }
+        let remaining = reset.timeIntervalSince(now)
+        guard remaining > 0 else { return "Bereit" }
         let days = Int(remaining) / 86400
         let hours = (Int(remaining) % 86400) / 3600
         let minutes = (Int(remaining) % 3600) / 60
-        
-        if model.name.contains("Pro") {
-            return "Refreshes in \(days) days, \(hours) hours"
-        } else {
-            return "Refreshes in \(hours) hours, \(minutes) minutes"
-        }
+        if days > 0 { return "Reset in \(days)d \(hours)h" }
+        if hours > 0 { return "Reset in \(hours)h \(minutes)m" }
+        return "Reset in \(minutes)m"
     }
-    
+
     var body: some View {
-        TimelineView(.periodic(from: .now, by: 60)) { _ in
+        TimelineView(.periodic(from: .now, by: 60)) { context in
             VStack(spacing: 4) {
                 HStack(alignment: .lastTextBaseline) {
                     Text(model.name)
                         .font(.system(size: 11, weight: .medium))
                         .foregroundStyle(.white)
-                    
-                    if model.name.contains("Gemini 3.1 Pro") || model.name.contains("Claude") {
+
+                    // Warning when quota is empty (no remaining)
+                    if model.usageFraction == 0 {
                         Image(systemName: "exclamationmark.triangle.fill")
                             .font(.system(size: 9))
                             .foregroundStyle(.yellow)
                     }
-                    
+
                     Spacer()
-                    
-                    Text(timeUntilReset)
+
+                    Text(resetCountdown(now: context.date))
                         .font(.system(size: 9))
                         .foregroundStyle(.secondary)
                 }
-                
-                // 5-segment progress bar with subtle glow
+
+                // 5-segment progress bar (segments = remaining quota)
+                // Color gradient: white (full) → red (empty)
                 HStack(spacing: 4) {
                     ForEach(0..<model.totalSegments, id: \.self) { i in
                         GeometryReader { geo in
-                            let color = model.name.contains("Gemini") ? Color.yellow : Color.white
+                            let f = model.usageFraction
+                            let segColor = Color(red: 1.0, green: f, blue: f)
                             ZStack(alignment: .leading) {
                                 RoundedRectangle(cornerRadius: 3)
                                     .fill(Color.white.opacity(0.1))
-                                
+
                                 if i < model.usedSegments {
                                     RoundedRectangle(cornerRadius: 3)
                                         .fill(
-                                            LinearGradient(colors: [color, color.opacity(0.8)], startPoint: .leading, endPoint: .trailing)
+                                            LinearGradient(colors: [segColor, segColor.opacity(0.8)],
+                                                           startPoint: .leading, endPoint: .trailing)
                                         )
                                         .frame(width: geo.size.width)
-                                        .shadow(color: color.opacity(0.3), radius: 2)
+                                        .shadow(color: segColor.opacity(0.3), radius: 2)
                                 }
                             }
                         }

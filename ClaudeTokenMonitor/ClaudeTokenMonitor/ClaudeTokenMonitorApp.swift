@@ -39,6 +39,12 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         manager.observeBudget(monitor)
         manager.observeTracker(tracker)
 
+        // Auto-launch at login
+        let loginManager = LoginItemManager()
+        if !loginManager.isEnabled {
+            loginManager.toggle()
+        }
+
         // Create floating widget and show if enabled (defaults to true on first launch)
         let widget = FloatingWidgetWindow(tracker: tracker)
         floatingWidget = widget

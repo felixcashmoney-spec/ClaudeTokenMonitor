@@ -63,7 +63,8 @@ final class UsageWindowTracker: ObservableObject {
     private var timer: Timer?
     private var logFileParser: LogFileParser?
     private var logParserCancellable: AnyCancellable?
-    private var apiClient: ClaudeAPIClient?
+    /// Exposed so UI can read login/error state
+    @Published var apiClient: ClaudeAPIClient?
     private var apiTimer: Timer?
 
     /// Claude Pro resets usage in ~5 hour windows
@@ -108,7 +109,7 @@ final class UsageWindowTracker: ObservableObject {
             self?.evaluate()
         }
 
-        apiTimer = Timer.scheduledTimer(withTimeInterval: 15.0, repeats: true) { [weak self] _ in
+        apiTimer = Timer.scheduledTimer(withTimeInterval: 120.0, repeats: true) { [weak self] _ in
             Task { @MainActor in
                 await self?.apiClient?.fetchAll()
                 self?.evaluate()
@@ -207,7 +208,7 @@ final class UsageWindowTracker: ObservableObject {
         let tokenWindow = buildTokenWindow(now: now)
 
         let apiData = apiClient?.latestData
-        let apiIsFresh = apiData.map { Date().timeIntervalSince($0.fetchedAt) < 30 } ?? false
+        let apiIsFresh = apiData.map { Date().timeIntervalSince($0.fetchedAt) < 300 } ?? false
 
         // When API data is fresh, prefer its utilization values (authoritative from claude.ai)
         let fiveHourUtil: Double
@@ -269,7 +270,7 @@ final class UsageWindowTracker: ObservableObject {
         let overage = logInfo
 
         let apiData = apiClient?.latestData
-        let apiIsFresh = apiData.map { Date().timeIntervalSince($0.fetchedAt) < 30 } ?? false
+        let apiIsFresh = apiData.map { Date().timeIntervalSince($0.fetchedAt) < 300 } ?? false
 
         // API data overrides log/session data when fresh
         let fiveHourUtil: Double?
@@ -325,14 +326,14 @@ final class UsageWindowTracker: ObservableObject {
 
     private func evaluateFromTokens(now: Date) {
         let apiData = apiClient?.latestData
-        let apiIsFresh = apiData.map { Date().timeIntervalSince($0.fetchedAt) < 30 } ?? false
+        let apiIsFresh = apiData.map { Date().timeIntervalSince($0.fetchedAt) < 300 } ?? false
 
         // API-sourced utilization values (used regardless of evaluation path)
         let apiUsage = apiIsFresh ? apiData?.usage : nil
         let api5hUtil: Double? = apiUsage.map { $0.five_hour.utilization / 100.0 }
         let api7dUtil: Double? = apiUsage.map { $0.seven_day.utilization / 100.0 }
-        let api5hReset: Date? = apiUsage.flatMap { Self.isoFormatter.date(from: $0.five_hour.resets_at) }
-        let api7dReset: Date? = apiUsage.flatMap { Self.isoFormatter.date(from: $0.seven_day.resets_at) }
+        let api5hReset: Date? = apiUsage.flatMap { $0.five_hour.resets_at.flatMap { Self.isoFormatter.date(from: $0) } }
+        let api7dReset: Date? = apiUsage.flatMap { $0.seven_day.resets_at.flatMap { Self.isoFormatter.date(from: $0) } }
 
         guard let window = buildTokenWindow(now: now) else {
             // No token data — use API data if available
